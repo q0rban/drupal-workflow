@@ -498,7 +498,7 @@ function workflow_update_6101() {
   // drop old fields.
   foreach ($schema as $table => $table_schema) {
     if (!empty($table_schema['indexes'])) {
-      // Add new fields to appropriate tables.
+      // Add new indexes to appropriate tables.
       foreach ($table_schema['indexes'] as $name => $fields) {
         db_add_index($ret, $table, $name, $fields);
       }
