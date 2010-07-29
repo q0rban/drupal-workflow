@@ -112,8 +112,8 @@ function workflow_menu() {
  */
 function workflow_node_tab_access($node = NULL) {
   global $user;
-  $wid = workflow_get_workflow_for_type($node->type);
-  if ($wid === FALSE) {
+  $name = workflow_get_workflow_for_type($node->type);
+  if ($name === FALSE) {
     // No workflow associated with this node type.
     return FALSE;
   }
@@ -121,7 +121,7 @@ function workflow_node_tab_access($node = NULL) {
   if ($node->uid == $user->uid) {
     $roles = array_merge(array('author'), $roles);
   }
-  $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE wid = %d", $wid));
+  $workflow = workflow_load($name);
   $allowed_roles = $workflow->tab_roles ? explode(',', $workflow->tab_roles) : array();
 
   if (user_access('administer nodes') || array_intersect($roles, $allowed_roles)) {
@@ -223,8 +223,8 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // Note no break; fall through to 'update' case.
     case 'update':
       // Do nothing if there is no workflow for this node type.
-      $wid = workflow_get_workflow_for_type($node->type);
-      if (!$wid) {
+      $name = workflow_get_workflow_for_type($node->type);
+      if (!$name) {
         break;
       }
 
@@ -428,7 +428,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
       $node = node_load($form['nid']['#value']);
     }
     $choices = workflow_field_choices($node);
-    $wid = workflow_get_workflow_for_type($node->type);
+    $name = workflow_get_workflow_for_type($node->type);
     $states = workflow_get_states($wid);
     // If this is a preview, the current state should come from
     // the form values, not the node, as the user may have changed
@@ -439,7 +439,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     if (count($choices) < $min) {
       return;
     }
-    $workflow = workflow_load($wid);
+    $workflow = workflow_load($name);
     $form['#wf'] = $workflow;
 
     // If the current node state is not one of the choices, autoselect first choice.
@@ -695,12 +695,12 @@ function workflow_select_given_state_action_submit($form_id, $form_state) {
  */
 function workflow_field_choices($node) {
   global $user;
-  $wid = workflow_get_workflow_for_type($node->type);
-  if (!$wid) {
+  $name = workflow_get_workflow_for_type($node->type);
+  if (!$name) {
     // No workflow for this type.
     return array();
   }
-  $states = workflow_get_states($wid);
+  $states = workflow_get_states($name);
   $roles = array_keys($user->roles);
   $current_sid = workflow_node_current_state($node);
 
@@ -715,7 +715,7 @@ function workflow_field_choices($node) {
   $transitions = workflow_allowable_transitions($current_sid, 'to', $roles);
 
   // Include current state if it is not the (creation) state.
-  if ($current_sid == _workflow_creation_state($wid)) {
+  if ($current_sid == _workflow_creation_state($name)) {
     unset($transitions[$current_sid]);
   }
   return $transitions;
@@ -739,8 +739,8 @@ function workflow_node_current_state($node) {
 
   if (!$sid && !empty($node->type)) {
     // No current state. Use creation state.
-    $wid = workflow_get_workflow_for_type($node->type);
-    $sid = _workflow_creation_state($wid);
+    $name = workflow_get_workflow_for_type($node->type);
+    $sid = _workflow_creation_state($name);
   }
   return $sid;
 }
@@ -748,17 +748,18 @@ function workflow_node_current_state($node) {
 /**
  * Return the ID of the creation state for this workflow.
  *
- * @param $wid
- *   The ID of the workflow.
+ * @param $name
+ *   The machine name of the workflow.
  */
-function _workflow_creation_state($wid) {
+function _workflow_creation_state($name) {
   static $cache;
-  if (!isset($cache[$wid])) {
-    $result = db_result(db_query("SELECT sid FROM {workflow_states} WHERE wid = %d AND sysid = %d", $wid, WORKFLOW_CREATION));
-    $cache[$wid] = $result;
+
+  if (empty($cache[$name])) {
+    $sql = "SELECT sid FROM {workflow_states} WHERE workflow_name = '%s' AND sysid = %d";
+    $cache[$name] = db_result(db_query($sql, $name, WORKFLOW_CREATION));
   }
 
-  return $cache[$wid];
+  return empty($cache[$name]) ? FALSE : $cache[$name];
 }
 
 /**
@@ -824,13 +825,13 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
 /**
  * Load function.
  *
- * @param $wid
- *   The ID of the workflow to load.
+ * @param $name
+ *   The machine name of the workflow to load.
  * @return $workflow
  *   Object representing the workflow.
  */
-function workflow_load($wid) {
-  $workflow = db_fetch_object(db_query('SELECT * FROM {workflows} WHERE wid = %d', $wid));
+function workflow_load($name) {
+  $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE workflow_name = '%s'", $name));
   $workflow->options = unserialize($workflow->options);
   return $workflow;
 }
@@ -976,19 +977,18 @@ function workflow_get_name($wid) {
  *
  * @param $type
  *   Machine readable node type name, e.g. 'story'.
- * @return int
- *   The ID of the workflow or FALSE if no workflow is mapped to this type.
+ * @return string
+ *   The machine name of the workflow or FALSE if no workflow is mapped to this type.
  */
 function workflow_get_workflow_for_type($type) {
   static $cache;
-  if(!isset($cache[$type])) {
-    $wid = db_result(db_query("SELECT wid FROM {workflow_type_map} WHERE type = '%s'", $type));
-    $cache[$type] = $wid;
+
+  if(empty($cache[$type])) {
+    $sql = "SELECT workflow_name FROM {workflow_type_map} WHERE type = '%s'";
+    $cache[$type] = db_result(db_query($sql, $type));
   }
-  else {
-    $wid = $cache[$type];
-  }
-  return $wid > 0 ? $wid : FALSE;
+
+  return empty($cache[$type]) ? FALSE : $cache[$type];
 }
 
 /**
@@ -1523,9 +1523,11 @@ function workflow_token_values($type, $object = NULL) {
     case 'workflow':
       $node = (object)$object;
 
-      if ($wid = workflow_get_workflow_for_type($node->type)) {
-        $values['workflow-name'] = workflow_get_name($wid);
-        $states = workflow_get_states($wid);
+      if ($machine_name = workflow_get_workflow_for_type($node->type)) {
+        $workflow = workflow_load($machine_name);
+        $values['workflow-name'] = $workflow->name;
+        $values['workflow-machine-name'] = $machine_name;
+        $states = workflow_get_states($machine_name);
       }
       else {
         break;
@@ -1542,7 +1544,7 @@ function workflow_token_values($type, $object = NULL) {
         // The node is being submitted but the form data has not been saved to the database yet,
         // so we set the token values from the workflow form fields.
         $sid = $node->workflow;
-        $old_sid = isset($row->sid) ? $row->sid : _workflow_creation_state($wid);
+        $old_sid = isset($row->sid) ? $row->sid : _workflow_creation_state($machine_name);
         $date = time();
         $user_name = $node->uid ? $node->name : variable_get('anonymous', 'Anonymous');
         $uid = $node->uid;
@@ -1556,7 +1558,7 @@ function workflow_token_values($type, $object = NULL) {
         $choices = workflow_field_choices($node);
         $keys = array_keys($choices);
         $sid = array_shift($keys);
-        $old_sid = _workflow_creation_state($wid);
+        $old_sid = _workflow_creation_state($machine_name);
         $date = time();
         $user_name = $node->uid ? $node->name : variable_get('anonymous', 'Anonymous');
         $uid = $node->uid;
@@ -1597,12 +1599,13 @@ function workflow_token_values($type, $object = NULL) {
 function workflow_token_list($type = 'all') {
 
   if ($type == 'workflow' || $type == 'node' || $type == 'all') {
-    $tokens['workflow']['workflow-name']                          =  'Name of workflow appied to this node';
+    $tokens['workflow']['workflow-name']                          =  'Name of workflow applied to this node';
+    $tokens['workflow']['workflow-machine-name']                  =  'Machine name of workflow applied to this node';
     $tokens['workflow']['workflow-current-state-name']            =  'Current state of content';
     $tokens['workflow']['workflow-old-state-name']                =  'Old state of content';
     $tokens['workflow']['workflow-current-state-date-iso']        =  'Date of last state change (ISO)';
     $tokens['workflow']['workflow-current-state-date-tstamp']     =  'Date of last state change (timestamp)';
-    $tokens['workflow']['workflow-current-state-date-formatted']  =  'Date of last state change (formated - M d, Y h:i:s)';;
+    $tokens['workflow']['workflow-current-state-date-formatted']  =  'Date of last state change (formatted - M d, Y h:i:s)';;
 
     $tokens['workflow']['workflow-current-state-updating-user-name']       = 'Username of last state changer';
     $tokens['workflow']['workflow-current-state-updating-user-uid']        = 'uid of last state changer';

@@ -289,14 +289,14 @@ function theme_workflow_edit_form($form) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_validate($form_id, $form_state) {
-  $wid = $form_state['values']['wid'];
+  $machine_name = $form_state['values']['workflow_name'];
   // Make sure workflow name is not a duplicate.
   if (array_key_exists('wf_name', $form_state['values']) && $form_state['values']['wf_name'] != '') {
-    $workflow_name = $form_state['values']['wf_name'];
+    $name = $form_state['values']['wf_name'];
     $workflows = array_flip(workflow_get_all());
-    if (array_key_exists($workflow_name, $workflows) && $wid != $workflows[$workflow_name]) {
+    if (array_key_exists($name, $workflows) && $machine_name != $workflows[$name]) {
       form_set_error('wf_name', t('A workflow with the name %name already exists. Please enter another name for this workflow.',
-        array('%name' => $workflow_name)));
+        array('%name' => $name)));
     }
   }
   else {
@@ -305,7 +305,7 @@ function workflow_edit_form_validate($form_id, $form_state) {
   }
 
   // Make sure 'author' is checked for (creation) -> [something].
-  $creation_id = _workflow_creation_state($wid);
+  $creation_id = _workflow_creation_state($machine_name);
   if (isset($form_state['values']['transitions'][$creation_id]) && is_array($form_state['values']['transitions'][$creation_id])) {
     foreach ($form_state['values']['transitions'][$creation_id] as $to => $roles) {
       if ($roles['author']) {

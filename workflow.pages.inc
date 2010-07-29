@@ -11,7 +11,7 @@
  */
 function workflow_tab_page($node = NULL) {
   drupal_set_title(check_plain($node->title));
-  $wid = workflow_get_workflow_for_type($node->type);
+  $machine_name = workflow_get_workflow_for_type($node->type);
   $states_per_page = variable_get('workflow_states_per_page', 20);
   $result = db_query("SELECT sid, state FROM {workflow_states} WHERE status = 1 ORDER BY sid");
   while ($data = db_fetch_object($result)) {
@@ -26,7 +26,7 @@ function workflow_tab_page($node = NULL) {
 
   // theme_workflow_current_state() must run state through check_plain().
   $output = '<p>'. t('Current state: !state', array('!state' => theme('workflow_current_state', $states[$current]))) . "</p>\n";
-  $output .= drupal_get_form('workflow_tab_form', $node, $wid, $states, $current);
+  $output .= drupal_get_form('workflow_tab_form', $node, $machine_name, $states, $current);
 
   $result = pager_query("SELECT h.*, u.name FROM {workflow_node_history} h LEFT JOIN {users} u ON h.uid = u.uid WHERE nid = %d ORDER BY hid DESC", $states_per_page, 0, NULL, $node->nid);
   $rows = array();
@@ -108,8 +108,8 @@ function theme_workflow_deleted_state($state_name) {
  *
  * @param $node
  *   Node for which workflow information will be displayed.
- * @param $wid
- *   ID of workflow to display.
+ * @param $machine_name
+ *   The machine name of the workflow to display.
  * @param $states
  *   Array of states for the workflow.
  * @param $current
@@ -117,15 +117,14 @@ function theme_workflow_deleted_state($state_name) {
  * @return
  *   Form definition array.
  */
-function workflow_tab_form($form_state, $node, $wid, $states, $current) {
+function workflow_tab_form($form_state, $node, $machine_name, $states, $current) {
   $form['#tab'] = TRUE;
   $choices = workflow_field_choices($node);
 
   $min = $states[$current] == t('(creation)') ? 1 : 2;
   // Only build form if user has possible target state(s).
   if (count($choices) >= $min) {
-    $wid = workflow_get_workflow_for_type($node->type);
-    $workflow = workflow_load($wid);
+    $workflow = workflow_load($machine_name);
     $form['#wf'] = $workflow;
     $name = check_plain((t($workflow->name)));
     // See if scheduling information is present.
