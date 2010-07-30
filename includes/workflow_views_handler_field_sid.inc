@@ -17,7 +17,7 @@ class workflow_views_handler_field_sid extends views_handler_field {
 
     static $states;
     if (!isset($states)) {
-      $states = workflow_get_states();
+      $states = workflow_get_states(NULL, 'sid');
     }
     $output = $states[$values->{$this->field_alias}];
     if (empty($output)) {

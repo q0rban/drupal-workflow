@@ -75,7 +75,7 @@ function workflow_menu() {
     'type' => MENU_CALLBACK,
     'access arguments' => array('administer workflow'),
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('workflow_state_add_form'),
+    'page arguments' => array('workflow_state_form'),
     'file' => 'workflow.admin.inc',
   );
   $items['admin/build/workflow/state/delete'] = array(
@@ -429,7 +429,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     }
     $choices = workflow_field_choices($node);
     $name = workflow_get_workflow_for_type($node->type);
-    $states = workflow_get_states($wid);
+    $states = workflow_get_states($name);
     // If this is a preview, the current state should come from
     // the form values, not the node, as the user may have changed
     // the state.
@@ -961,15 +961,15 @@ function workflow_is_system_state($state) {
 }
 
 /**
- * Given the ID of a workflow, return its name.
+ * Given the machine name of a workflow, return its name.
  *
- * @param integer $wid
- *   The ID of the workflow.
+ * @param string $name
+ *   The machine name of the workflow.
  * @return string
  *   The name of the workflow.
  */
-function workflow_get_name($wid) {
-  return db_result(db_query("SELECT name FROM {workflows} WHERE wid = %d", $wid));
+function workflow_get_name($name) {
+  return db_result(db_query("SELECT name FROM {workflows} WHERE workflow_name = '%s'", $name));
 }
 
 /**
@@ -992,17 +992,44 @@ function workflow_get_workflow_for_type($type) {
 }
 
 /**
- * Get names and IDs of all workflows from the database.
+ * Get all workflows.
  *
+ * @param $column
+ *   The table column to key the workflow from. Options are 'wid', 
+ *   'workflow_name', and 'name'. Defaults to 'workflow_name'.
  * @return
- *   An array of workflows keyed by workflow ID.
+ *   An array of workflows.
  */
-function workflow_get_all() {
+function workflow_get_all($column = 'workflow_name') {
+  // Default to workflow_name if an invalid key is used.
+  $key_options = array('wid', 'workflow_name', 'name');
+  $key = in_array($key, $key_options) ? $key : 'workflow_name';
+
   $workflows = array();
-  $result = db_query("SELECT wid, name FROM {workflows} ORDER BY name ASC");
+  $result = db_query("SELECT * FROM {workflows} ORDER BY name ASC");
   while ($data = db_fetch_object($result)) {
-    $workflows[$data->wid] = check_plain(t($data->name));
+    $data->name = check_plain(t($data->name));
+    $workflows[$data->{$key}] = $data;
   }
+  return $workflows;
+}
+
+/**
+ * Get all workflow names.
+ *
+ * @param $column
+ *   The table field to key the workflow from. Options are 'wid', 
+ *   'workflow_name', and 'name'. Defaults to 'workflow_name'.
+ * @return
+ *   An array of workflow names.
+ */
+function workflow_get_all_names($column = 'workflow_name') {
+  $workflows = workflow_get_all($column);
+
+  foreach ($workflows as $key => $workflow) {
+    $workflows[$key] = $workflow->name;
+  }
+
   return $workflows;
 }
 
@@ -1074,29 +1101,62 @@ function workflow_deletewf($wid) {
 }
 
 /**
- * Load workflow states for a workflow from the database.
- * If $wid is not passed, all states for all workflows are given.
- * States that have been deleted are not included.
+ * Load workflow states for a workflow from the database. If $machine_name is 
+ * not passed, all states for all workflows are given. States that have been 
+ * deleted are not included.
  *
- * @param $wid
- *   The ID of the workflow.
- *
+ * @param $machine_name
+ *   The machine name of the workflow.
+ * @param $column
+ *   The column to key the $states array by. Possible options are 'state_name'
+ *   and 'sid'. Defaults to 'state_name'.
  * @return
- *   An array of workflow states keyed by state ID.
+ *   An array of workflow states.
  */
-function workflow_get_states($wid = NULL) {
+function workflow_get_states($machine_name = NULL, $column = 'state_name') {
   $states = array();
-  if (isset($wid)) {
-    $result = db_query("SELECT sid, state FROM {workflow_states} WHERE wid = %d AND status = 1 ORDER BY weight, sid", $wid);
-    while ($data = db_fetch_object($result)) {
-      $states[$data->sid] = check_plain(t($data->state));
-    }
+
+  if (isset($machine_name)) {
+    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, sid";
+    $result = db_query($query, $machine_name);
   }
   else {
-    $result = db_query("SELECT ws.sid, ws.state, w.name FROM {workflow_states} ws INNER JOIN {workflows} w ON ws.wid = w.wid WHERE status = 1 ORDER BY sid");
-    while ($data = db_fetch_object($result)) {
-      $states[$data->sid] = check_plain(t($data->name)) .': '. check_plain(t($data->state));
+    $query = "SELECT * FROM {workflow_states} ws WHERE status = 1 ORDER BY weight, sid";
+    $result = db_query($query);
+  }
+
+  while ($data = db_fetch_object($result)) {
+    if (is_null($machine_name)) {
+      $workflow = workflow_load($data->workflow_name);
+      $data->state = $workflow->name .': '. $data->state;
     }
+    $data->state = check_plain(t($data->state));
+    // Ensure $column is a unique field. If not, default to state_name.
+    $column = in_array($column, array('state_name', 'sid')) ? $column : 'state_name';
+    $states[$data->{$column}] = $data;
+  }
+
+  return $states;
+}
+
+/**
+ * Load workflow state names for a workflow from the database. If $machine_name 
+ * is not passed, all states for all workflows are given. States that have been 
+ * deleted are not included.
+ *
+ * @param $machine_name
+ *   The machine name of the workflow.
+ * @param $column
+ *   The field to key the $states array by. Possible options are 'state_name'
+ *   and 'sid'. Defaults to 'state_name'.
+ * @return
+ *   An array of workflow states.
+ */
+function workflow_get_state_names($machine_name = NULL, $column = 'state_name') {
+  $states = workflow_get_states($machine_name, $column);
+
+  foreach ($states as $key => $state) {
+    $states[$key] = $state->state;
   }
 
   return $states;

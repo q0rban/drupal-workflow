@@ -16,18 +16,7 @@ class workflow_views_handler_filter_sid extends views_handler_filter_in_operator
     if (!isset($this->value_options)) {
       $this->value_title = t('Workflow state');
 
-      $workflows = workflow_get_all();
-      if (count($workflows) > 1) {
-        $states = array('' => t('No state'));
-        foreach ($workflows as $wid => $wname) {
-          $states[$wname] = workflow_get_states($wid);
-        }
-      }
-      else {
-        $states = workflow_get_states();
-      }
-
-      $this->value_options = $states;
+      $this->value_options = workflow_get_states_names(NULL, 'sid');;
     }
   }
 

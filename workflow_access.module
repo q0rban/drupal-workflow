@@ -65,7 +65,7 @@ function workflow_access_form_workflow_edit_form_alter(&$form, $form_state) {
   );
 
   // Add a table for every workflow state.
-  $states = workflow_get_states($form['wid']['#value']);
+  $states = workflow_get_states($form['workflow_name']['#value'], 'sid');
   foreach ($states as $sid => $state) {
     
     if (workflow_is_system_state($state)) {

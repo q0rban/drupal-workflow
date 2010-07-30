@@ -429,7 +429,7 @@ function workflow_update_6101() {
 /**
  * Update Workflow to use machine names
  */
-function workflow_update_6101() {
+function workflow_update_6102() {
   $ret = array();
 
   // Set up the schema changes in an array.
@@ -468,7 +468,7 @@ function workflow_update_6101() {
   $result = db_query("SELECT * FROM {workflows}");
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing workflows.
-    $name = _workflow_update_6101_name_gen($obj->name, $obj->wid);
+    $name = _workflow_update_6102_name_gen($obj->name, $obj->wid);
     $sql = "UPDATE {workflows} SET workflow_name = '%s' WHERE wid = %d";
     $result = db_query($sql, $name, $obj->wid);
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
@@ -488,7 +488,7 @@ function workflow_update_6101() {
   $result = db_query("SELECT * FROM {workflow_states}");
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing workflows.
-    $name = _workflow_update_6101_name_gen($obj->state, $obj->sid);
+    $name = _workflow_update_6102_name_gen($obj->state, $obj->sid);
     $sql = "UPDATE {workflow_states} SET state_name = '%s' WHERE sid = %d";
     $result = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
@@ -523,7 +523,7 @@ function workflow_update_6101() {
 /**
  * Turn a ascii string into a machine name.
  */
-function _workflow_update_6101_name_gen($string, $id) {
+function _workflow_update_6102_name_gen($string, $id) {
   // First let's make it lowercase.
   $output = strtolower($string);
   // Then filter out any silly characters.
@@ -533,7 +533,7 @@ function _workflow_update_6101_name_gen($string, $id) {
   $length = strlen($output) + strlen($id) + 1;
 
   // Trim the name down if necessary. This is a HIGHLY unlikely occurence.
-  $output = _workflow_update_6101_name_trim($output, $length - 255);
+  $output = _workflow_update_6102_name_trim($output, $length - 255);
 
   return $output .'_'. $id;
 }
@@ -541,7 +541,7 @@ function _workflow_update_6101_name_gen($string, $id) {
 /**
  * If necessary, trim a string down to 255 characters.
  */
-function _workflow_update_6101_name_trim($string, $num) {
+function _workflow_update_6102_name_trim($string, $num) {
   // Only trim if $num is positive.
   if ($num > 0) {
     $new_length = strlen($string) - $num;
