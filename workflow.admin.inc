@@ -7,7 +7,7 @@
  */
 
 /**
- * Form builder. Create the form for adding/editing a workflow.
+ * Form builder. Create the form for adding a workflow.
  *
  * @param $name
  *   Name of the workflow if editing.
@@ -17,13 +17,17 @@
  * @return
  *   HTML form.
  */
-function workflow_add_form(&$form_state, $name = NULL) {
+function workflow_add_form(&$form_state) {
   $form = array();
-  $form['wf_name'] = array(
+  $form['label'] = array(
     '#type' => 'textfield',
-    '#title' => t('Workflow Name'),
+    '#title' => t('Workflow Label'),
     '#maxlength' => '254',
-    '#default_value' => $name
+  );
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Machine Name'),
+    '#maxlength' => '254',
   );
   $form['submit'] = array(
     '#type' => 'submit',
@@ -38,16 +42,30 @@ function workflow_add_form(&$form_state, $name = NULL) {
  * @see workflow_add_form()
  */
 function workflow_add_form_validate($form, &$form_state) {
-  $workflow_name = $form_state['values']['wf_name'];
+  $values = $form_state['values'];
   $workflows = array_flip(workflow_get_all());
   // Make sure a nonblank workflow name is provided.
-  if ($workflow_name == '') {
-    form_set_error('wf_name', t('Please provide a nonblank name for the new workflow.'));
+  if ($values['label'] == '') {
+    form_set_error('label', t('Please provide a nonblank name for the new workflow.'));
   }
   // Make sure workflow name is not a duplicate.
-  if (array_key_exists($workflow_name, $workflows)) {
-    form_set_error('wf_name', t('A workflow with the name %name already exists. Please enter another name for your new workflow.',
-      array('%name' => $workflow_name)));
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflow} WHERE label = '%s'"))) {
+    form_set_error('label', t('A workflow with the name %name already exists. Please enter another name for your new workflow.',
+      array('%name' => $values['label'])));
+  }
+
+  // Make sure a nonblank workflow name is provided.
+  if ($values['name'] == '') {
+    form_set_error('name', t('Please provide a nonblank name for the new workflow.'));
+  }
+  // Make sure machine name contains only alnum chars and underscores.
+  if (preg_match("/[^[:alnum:]_]/", $values['name'])) {
+    form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
+  }
+  // Make sure workflow name is not a duplicate.
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflow} WHERE name = '%s'"))) {
+    form_set_error('name', t('A workflow with the machine name %name already exists. Please enter another name for your new workflow.',
+      array('%name' => $values['name'])));
   }
 }
 
@@ -57,13 +75,13 @@ function workflow_add_form_validate($form, &$form_state) {
  * @see workflow_add_form()
  */
 function workflow_add_form_submit($form, &$form_state) {
-  $workflow_name = $form_state['values']['wf_name'];
-  $wid = workflow_create($workflow_name);
-  watchdog('workflow', 'Created workflow %name', array('%name' => $workflow_name));
+  $values = $form_state['values'];
+  $workflow = workflow_create($values);
+  watchdog('workflow', 'Created workflow %name', array('%name' => $values['label']));
   drupal_set_message(t('The workflow %name was created. You should now add states to your workflow.',
     array('%name' => $workflow_name)), 'status');
   $form_state['wid'] = $wid;
-  $form_state['redirect'] = 'admin/build/workflow/state/'. $wid;
+  $form_state['redirect'] = 'admin/build/workflow/state/'. $workflow->name;
 }
 
 /**
@@ -183,7 +201,7 @@ function workflow_edit_form($form_state, $workflow) {
   );
   $form['basic']['wf_name'] = array(
     '#type' => 'textfield',
-    '#default_value' => $workflow->name,
+    '#default_value' => $workflow->label,
     '#title' => t('Workflow Name'),
     '#size' => '16',
     '#maxlength' => '254',
@@ -427,7 +445,7 @@ function workflow_state_form_validate($form, &$form_state) {
 
   // Make sure name is not a duplicate
   foreach($wf_states as $state) {
-    if ($state->name == $name) {
+    if ($state->label == $name) {
       form_set_error('state', t('A state with the name %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $name)));
       break;
     }
@@ -544,7 +562,7 @@ function workflow_overview() {
 
     foreach ($states as $state_name => $state) {
       $state_links = array();
-      if (!workflow_is_system_state($state->name)) {
+      if (!workflow_is_system_state($state->label)) {
         $state_links = array(
           'workflow_overview_edit_state' => array(
             'title' => t('Edit'),
@@ -558,7 +576,7 @@ function workflow_overview() {
       }
       // Allow modules to insert state operations.
       $state_links = array_merge($state_links, module_invoke_all('workflow_operations', 'state', $workflow->wid, $state->sid));
-      $subrows[] = array($state->name, theme('links', $state_links));
+      $subrows[] = array($state->label, theme('links', $state_links));
       unset($state_links);
     }
 
@@ -600,7 +618,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
     // Cannot assign a node to (creation) because that implies
     // that the node does not exist.
     foreach ($states as $key => $value) {
-      if ($value->name == t('(creation)')) {
+      if ($value->label == t('(creation)')) {
         unset($states[$key]);
       }
     }
@@ -609,7 +627,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
     // states that can be assigned.
     unset($states[$state_name]);
     if ($states) {
-      $form['new_sid'] = array(
+      $form['new_state'] = array(
         '#type' => 'select',
         '#title' => t('State to be assigned to orphaned nodes'),
         '#description' => format_plural($count, 'Since you are deleting a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.', 'Since you are deleting a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.'),
@@ -623,13 +641,13 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
     }
   }
 
-  $form['wid'] = array(
+  $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $wid
+    '#value' => $workflow_name,
   );
-  $form['sid'] = array(
+  $form['state_name'] = array(
     '#type' => 'value',
-    '#value' => $sid
+    '#value' => $state_name,
   );
 
   return confirm_form(
@@ -648,11 +666,12 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
  * @see workflow_state_delete_form()
  */
 function workflow_state_delete_form_submit($form, &$form_state) {
-  $states = workflow_get_states($form_state['values']['wid']);
-  $state_name = $states[$form_state['values']['sid']];
+  $states = workflow_get_states($form_state['values']['workflow_name']);
+  $state = $states[$form_state['values']['state_name']];
+  $name = 
   if ($form_state['values']['confirm'] == 1) {
-    $new_sid = isset($form_state['values']['new_sid']) ? $form_state['values']['new_sid'] : NULL;
-    workflow_state_delete($form_state['values']['sid'], $new_sid);
+    $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
+    workflow_state_delete($form_state['values']['state_name'], $new_state);
     watchdog('workflow', 'Deleted workflow state %name', array('%name' => $state_name));
     drupal_set_message(t('The workflow state %name was deleted.', array('%name' => $state_name)));
   }

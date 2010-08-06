@@ -126,7 +126,7 @@ function workflow_tab_form($form_state, $node, $machine_name, $states, $current)
   if (count($choices) >= $min) {
     $workflow = workflow_load($machine_name);
     $form['#wf'] = $workflow;
-    $name = check_plain((t($workflow->name)));
+    $name = check_plain((t($workflow->label)));
     // See if scheduling information is present.
     if ($node->_workflow_scheduled_timestamp && $node->_workflow_scheduled_sid) {
       global $user;

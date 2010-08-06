@@ -453,7 +453,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     if (sizeof($choices) > 1) {
       $form['workflow'] = array(
         '#type' => 'fieldset',
-        '#title' => check_plain($workflow->name),
+        '#title' => check_plain($workflow->label),
         '#collapsible' => TRUE,
         '#collapsed' => FALSE,
         '#weight' => 10,
@@ -641,17 +641,17 @@ function workflow_select_given_state_action($node, $context) {
  * @see workflow_select_given_state_action()
  */
 function workflow_select_given_state_action_form($context) {
-  $result = db_query("SELECT * FROM {workflow_states} ws LEFT JOIN {workflows} w ON ws.wid = w.wid WHERE ws.sysid = 0 AND ws.status = 1 ORDER BY ws.wid, ws.weight");
+  $result = db_query("SELECT * FROM {workflow_states} ws LEFT JOIN {workflows} w ON ws.workflow_name = w.name WHERE ws.sysid = 0 AND ws.status = 1 ORDER BY ws.workflow_name, ws.weight");
   $previous_workflow = '';
   $options = array();
   while ($data = db_fetch_object($result)) {
-    $options[$data->name][$data->sid] = $data->state;
+    $options[$data->workflow_name][$data->name] = $data->state;
   }
-  $form['target_sid'] = array(
+  $form['target_state'] = array(
     '#type' => 'select',
     '#title' => t('Target state'),
     '#description' => t('Please select that state that should be assigned when this action runs.'),
-    '#default_value' => isset($context['target_sid']) ? $context['target_sid'] : '',
+    '#default_value' => isset($context['target_state']) ? $context['target_state'] : '',
     '#options' => $options,
   );
   $form['force'] = array(
@@ -676,10 +676,10 @@ function workflow_select_given_state_action_form($context) {
  * @see workflow_select_given_state_action_form()
  */
 function workflow_select_given_state_action_submit($form_id, $form_state) {
-  $state_name = workflow_get_state_name($form_state['values']['target_sid']);
+  $state_name = workflow_get_state_name($form_state['values']['target_state']);
   return array(
-    'target_sid' => $form_state['values']['target_sid'],
-    'state_name' => $state_name,
+    'target_state' => $form_state['values']['target_state'],
+    'label' => $state_name,
     'force' => $form_state['values']['force'],
     'workflow_comment' => $form_state['values']['workflow_comment'],
   );
@@ -996,19 +996,19 @@ function workflow_get_workflow_for_type($type) {
  *
  * @param $column
  *   The table column to key the workflow from. Options are 'wid', 
- *   'workflow_name', and 'name'. Defaults to 'workflow_name'.
+ *   'workflow_name', and 'label'. Defaults to 'workflow_name'.
  * @return
  *   An array of workflows.
  */
 function workflow_get_all($column = 'workflow_name') {
   // Default to workflow_name if an invalid key is used.
-  $key_options = array('wid', 'workflow_name', 'name');
+  $key_options = array('wid', 'workflow_name', 'label');
   $key = in_array($key, $key_options) ? $key : 'workflow_name';
 
   $workflows = array();
   $result = db_query("SELECT * FROM {workflows} ORDER BY name ASC");
   while ($data = db_fetch_object($result)) {
-    $data->name = check_plain(t($data->name));
+    $data->label = check_plain(t($data->label));
     $workflows[$data->{$key}] = $data;
   }
   return $workflows;
@@ -1019,7 +1019,7 @@ function workflow_get_all($column = 'workflow_name') {
  *
  * @param $column
  *   The table field to key the workflow from. Options are 'wid', 
- *   'workflow_name', and 'name'. Defaults to 'workflow_name'.
+ *   'workflow_name', and 'label'. Defaults to 'workflow_name'.
  * @return
  *   An array of workflow names.
  */
@@ -1036,23 +1036,22 @@ function workflow_get_all_names($column = 'workflow_name') {
 /**
  * Create a workflow and its (creation) state.
  *
- * @param $name
- *   The name of the workflow.
+ * @param $workflow
+ *   An array of values needed to create a workflow.
  */
-function workflow_create($name) {
-  $workflow = array(
-    'name' => $name,
-    'options' => serialize(array('comment_log_node' => 1, 'comment_log_tab' => 1)),
-  );
-  drupal_write_record('workflows', $workflow);
+function workflow_create($workflow) {
+  $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
+  $workflow += $default;
+
+  drupal_write_record('workflows', (object) $workflow);
   workflow_state_save(array(
-    'wid' => $workflow['wid'],
+    'workflow_name' => $workflow['wid'],
     'state' => t('(creation)'),
     'sysid' => WORKFLOW_CREATION,
     'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
   // Workflow creation affects tabs (local tasks), so force menu rebuild.
   menu_rebuild();
-  return $workflow['wid'];
+  return $workflow;
 }
 
 /**
@@ -1128,9 +1127,9 @@ function workflow_get_states($machine_name = NULL, $column = 'state_name') {
   while ($data = db_fetch_object($result)) {
     if (is_null($machine_name)) {
       $workflow = workflow_load($data->workflow_name);
-      $data->state = $workflow->name .': '. $data->state;
+      $data->label = $workflow->label .': '. $data->label;
     }
-    $data->state = check_plain(t($data->state));
+    $data->label = check_plain(t($data->label));
     // Ensure $column is a unique field. If not, default to state_name.
     $column = in_array($column, array('state_name', 'sid')) ? $column : 'state_name';
     $states[$data->{$column}] = $data;
@@ -1534,7 +1533,7 @@ function workflow_action_info_alter(&$info) {
  * Expose each transition as a hook.
  */
 function workflow_hook_info() {
-  $states = workflow_get_states();
+  $states = workflow_get_states(NULL, 'sid');
   if (!$states) {
     return;
   }
@@ -1585,7 +1584,7 @@ function workflow_token_values($type, $object = NULL) {
 
       if ($machine_name = workflow_get_workflow_for_type($node->type)) {
         $workflow = workflow_load($machine_name);
-        $values['workflow-name'] = $workflow->name;
+        $values['workflow-name'] = $workflow->label;
         $values['workflow-machine-name'] = $machine_name;
         $states = workflow_get_states($machine_name);
       }
