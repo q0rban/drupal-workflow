@@ -27,12 +27,12 @@ function workflow_schema() {
   $schema['workflows'] = array(
     'fields' => array(
       'wid'          => array('type' => 'serial', 'not null' => TRUE),
-      'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'name'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'label'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'tab_roles'    => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
       'options'      => array('type' => 'text', 'size' => 'big', 'not null' => FALSE)),
     'primary key'    => array('wid'),
-    'unique keys'    => array('workflow_name' => array('workflow_name')),
+    'unique keys'    => array('name' => array('name')),
   );
   $schema['workflow_type_map'] = array(
     'fields' => array(
@@ -55,9 +55,9 @@ function workflow_schema() {
   $schema['workflow_states'] = array(
     'fields' => array(
       'sid'    => array('type' => 'serial', 'not null' => TRUE),
-      'state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'state'  => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'label'  => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'weight' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
       'sysid'  => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
       'status' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 1, 'disp-width' => '4')),
@@ -437,8 +437,9 @@ function workflow_update_6102() {
   $name_field = array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '');
   $schema = array();
   $schema['workflows'] = array(
-    'fields' => array('workflow_name' => $name_field + array('sql')),
-    'unique keys' => array('workflow_name' => array('workflow_name')),
+    'renamed fields' => array('name' => 'label'),
+    'fields' => array('name' => $name_field + array('sql')),
+    'unique keys' => array('name' => array('name')),
   );
   $schema['workflow_type_map'] = array(
     'fields' => array('workflow_name' => $name_field),
@@ -446,15 +447,23 @@ function workflow_update_6102() {
     'indexes' => array('type_name' => array('type', 'workflow_name')),
   );
   $schema['workflow_states'] = array(
+    'renamed fields' => array('state' => 'label'),
     'fields' => array(
-      'state_name' => $name_field,
+      'name' => $name_field,
       'workflow_name' => $name_field,
     ),
     'deleted fields' => array('wid'),
     'indexes' => array('workflow_name' => array('workflow_name')),
   );
 
+  // Rename existing fields and add new ones as needed.
   foreach ($schema as $table => $table_schema) {
+    if (!empty($table_schema['renamed fields'])) {
+      foreach ($table_schema['renamed fields'] as $old => $new) {
+        $ret[] = update_sql('ALTER TABLE {'. $table .'} RENAME "'. $old .'" TO "'. $new .'"');
+      }
+    }
+
     if (!empty($table_schema['fields'])) {
       // Add new fields to appropriate tables.
       foreach ($table_schema['fields'] as $name => $field) {
@@ -468,7 +477,7 @@ function workflow_update_6102() {
   $result = db_query("SELECT * FROM {workflows}");
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing workflows.
-    $name = _workflow_update_6102_name_gen($obj->name, $obj->wid);
+    $name = _workflow_update_6102_name_gen($obj->label, $obj->wid);
     $sql = "UPDATE {workflows} SET workflow_name = '%s' WHERE wid = %d";
     $result = db_query($sql, $name, $obj->wid);
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
