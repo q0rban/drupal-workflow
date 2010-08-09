@@ -1086,10 +1086,10 @@ function workflow_update($wid, $name, $tab_roles, $options) {
  *   The machine name of the workflow.
  */
 function workflow_deletewf($name) {
-  $result = db_query("SELECT sid FROM {workflow_states} WHERE workflow_name = '%s'", $name);
+  $result = db_query("SELECT * FROM {workflow_states} WHERE workflow_name = '%s'", $name);
   while ($data = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
-    workflow_state_delete($data->sid);
+    workflow_state_delete($data->name);
     db_query('DELETE FROM {workflow_node} WHERE sid = %d', $data->sid);
   }
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $name);
@@ -1225,37 +1225,38 @@ function workflow_state_save($state) {
  * transitions the state was involved in and any associations
  * with actions that were made to that transition.
  *
- * @param $sid
- *   The ID of the state to delete.
- * @param $new_sid
+ * @param $name
+ *   The machine name of the state to delete.
+ * @param $new_name
  *   Deleting a state will leave any nodes to which that state is assigned
- *   without a state. If $new_sid is given, it will be assigned to those
- *   orphaned nodes
+ *   without a state. If $new_state is given, it will be assigned to those
+ *   orphaned nodes.
  */
-function workflow_state_delete($sid, $new_sid = NULL) {
-  if ($new_sid) {
+function workflow_state_delete($name, $new_name = NULL) {
+  $state = workflow_get_state($name);
+  if ($new_name && $new_state = workflow_get_state($new_name)) {
     // Assign nodes to new state so they are not orphaned.
     // A candidate for the batch API.
     $node = new stdClass();
     $node->workflow_stamp = time();
-    $result = db_query("SELECT nid FROM {workflow_node} WHERE sid = %d", $sid);
+    $result = db_query("SELECT nid FROM {workflow_node} WHERE sid = %d", $state->sid);
     while ($data = db_fetch_object($result)) {
       $node->nid = $data->nid;
       $node->_workflow = $sid;
       _workflow_write_history($node, $new_sid, t('Previous state deleted'));
-      db_query("UPDATE {workflow_node} SET sid = %d WHERE nid = %d AND sid = %d", $new_sid, $data->nid, $sid);
+      db_query("UPDATE {workflow_node} SET sid = %d WHERE nid = %d AND sid = %d", $new_state->sid, $data->nid, $state->sid);
     }
   }
   else {
     // Go ahead and orphan nodes.
-    db_query('DELETE from {workflow_node} WHERE sid = %d', $sid);
+    db_query('DELETE from {workflow_node} WHERE sid = %d', $state->sid);
   }
 
   // Find out which transitions this state is involved in.
   $preexisting = array();
-  $result = db_query("SELECT sid, target_sid FROM {workflow_transitions} WHERE sid = %d OR target_sid = %d", $sid, $sid);
+  $result = db_query("SELECT sid, target_sid FROM {workflow_transitions} WHERE sid = %d OR target_sid = %d", $state->sid, $state->sid);
   while ($data = db_fetch_object($result)) {
-   $preexisting[$data->sid][$data->target_sid] = TRUE;
+    $preexisting[$data->sid][$data->target_sid] = TRUE;
   }
 
   // Delete the transitions and associated actions, if any.
@@ -1267,9 +1268,9 @@ function workflow_state_delete($sid, $new_sid = NULL) {
   }
 
   // Delete the state.
-  db_query("UPDATE {workflow_states} SET status = 0 WHERE sid = %d", $sid);
+  db_query("UPDATE {workflow_states} SET status = 0 WHERE sid = %d", $state->sid);
   // Notify interested modules.
-  module_invoke_all('workflow', 'state delete', $sid, NULL, NULL);
+  module_invoke_all('workflow', 'state delete', $state->sid, NULL, NULL);
 }
 
 /**
