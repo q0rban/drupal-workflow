@@ -88,15 +88,10 @@ function workflow_add_form_submit($form, &$form_state) {
  *
  * @param $name
  *   The machine name of the workflow to delete.
- * @param $sid
- *   Optional state ID.
  * @return
- *   Form definition array.
+ *   Confirmation form array.
  */
-function workflow_delete_form(&$form_state, $name, $sid = NULL) {
-  if (isset($sid)) {
-    return workflow_state_delete_form($machine_name, $sid);
-  }
+function workflow_delete_form(&$form_state, $name) {
   $form['name'] = array(
     '#type' => 'value',
     '#value' => $name,
@@ -442,25 +437,27 @@ function workflow_state_form_validate($form, &$form_state) {
 
   // Make sure name is not a duplicate
   foreach($wf_states as $state) {
-    if ($state->label == $label || (empty($form['#state']) && $state->name == $machine_name)) {
-      if ($state->label == $label) {
-        form_set_error('label', t('A state with the label %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $label)));
-      }
-      if ($state->name == $machine_name) {
-        form_set_error('name', t('A state with the machine name %name already exists in this workflow. Please enter another machine name for this state.', array('%name' => $machine_name)));
-      }
-      break;
+    if ($state->label == $label) {
+      form_set_error('label', t('A state with the label %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $label)));
     }
+    break;
   }
 
-  // Make sure a machine name has been specified
-  if ($machine_name == '') {
-    form_set_error('name', t('Please provide a machine name for the new state.'));
-  }
+  if (empty($form['#state'])) {
+    // Make sure a machine name has been specified
+    if ($machine_name == '') {
+      form_set_error('name', t('Please provide a machine name for the new state.'));
+    }
 
-  // Make sure machine name contains only alnum chars and underscores.
-  if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
-    form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
+    // Make sure machine name contains only alnum chars and underscores.
+    if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
+      form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
+    }
+
+    // Ensure that this machine name is unique.
+    if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
+      form_set_error('name', t('A state with the machine name %name already exists. Please enter another machine name for this state.', array('%name' => $machine_name)));
+    }
   }
 }
 
@@ -529,26 +526,26 @@ function workflow_transition_grid_form($machine_name) {
 function workflow_overview() {
   $row = array();
 
-  foreach (workflow_get_all() as $machine_name => $workflow) {
+  foreach (workflow_get_all() as $workflow_name => $workflow) {
     $links = array(
       'workflow_overview_add_state' => array(
         'title' => t('Add state'),
-        'href' => "admin/build/workflow/state/$machine_name"),
+        'href' => "admin/build/workflow/state/$workflow_name"),
       'workflow_overview_actions' => array(
         'title' => t('Actions'),
-        'href' => "admin/build/trigger/workflow/$machine_name"),
+        'href' => "admin/build/trigger/workflow/$workflow_name"),
       'workflow_overview_edit' => array(
         'title' => t('Edit'),
-        'href' => "admin/build/workflow/edit/$machine_name"),
+        'href' => "admin/build/workflow/edit/$workflow_name"),
       'workflow_overview_delete' => array(
         'title' => t('Delete'),
-        'href' => "admin/build/workflow/delete/$machine_name"),
+        'href' => "admin/build/workflow/delete/$workflow_name"),
     );
 
     // Allow modules to insert their own workflow operations.
     $links = array_merge($links, module_invoke_all('workflow_operations', 'workflow', $workflow->wid));
 
-    $states = workflow_get_states($machine_name);
+    $states = workflow_get_states($workflow_name);
     if (!module_exists('trigger') || count($states) < 2) {
       unset($links['workflow_overview_actions']);
     }
@@ -562,11 +559,11 @@ function workflow_overview() {
         $state_links = array(
           'workflow_overview_edit_state' => array(
             'title' => t('Edit'),
-            'href' => "admin/build/workflow/state/$machine_name/$state_name",
+            'href' => "admin/build/workflow/state/$workflow_name/$state_name",
           ),
           'workflow_overview_delete_state' => array(
             'title' => t('Delete'),
-            'href' => "admin/build/workflow/state/delete/$machine_name/$state_name"
+            'href' => "admin/build/workflow/state/delete/$workflow_name/$state_name"
           ),
         );
       }
@@ -596,14 +593,14 @@ function workflow_overview() {
 }
 
 /**
- * Form builder. Create form for confirmation of deleting a workflow state.
+ * Form for confirmation of deleting a workflow state.
  *
  * @param $workflow_name
  *   The machine name of the workflow.
- * @param $state_name
- *   The machine name of the workflow state.
+ * @param $name
+ *   The machine name of the state to delete.
  * @return
- *   Form array.
+ *   Confirmation form array.
  */
 function workflow_state_delete_form($form_state, $workflow_name, $name) {
   $states = $form['#states'] = workflow_get_state_names($workflow_name);
@@ -664,7 +661,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
 function workflow_state_delete_form_submit($form, &$form_state) {
   $states = $form['#states'];
   $name = $form_state['values']['name'];
-  $label = $states[$form_state['values']['name']];
+  $label = $states[$name];
   if ($form_state['values']['confirm'] == 1) {
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
     workflow_state_delete($name, $new_state);
