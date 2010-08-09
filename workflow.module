@@ -1145,45 +1145,46 @@ function workflow_get_states($machine_name = NULL, $column = 'state_name') {
  * is not passed, all states for all workflows are given. States that have been 
  * deleted are not included.
  *
- * @param $machine_name
+ * @param $workflow_name
  *   The machine name of the workflow.
  * @param $column
- *   The field to key the $states array by. Possible options are 'state_name'
- *   and 'sid'. Defaults to 'state_name'.
+ *   The field to key the $states array by. Possible options are 'name'
+ *   and 'sid'. Defaults to 'name'.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_state_names($machine_name = NULL, $column = 'state_name') {
-  $states = workflow_get_states($machine_name, $column);
+function workflow_get_state_names($workflow_name = NULL, $column = 'name') {
+  $states = workflow_get_states($workflow_name, $column);
 
   foreach ($states as $key => $state) {
-    $states[$key] = $state->state;
+    $states[$key] = $state->label;
   }
 
   return $states;
 }
 
 /**
- * Given the ID of a workflow state, return a keyed array representing the state.
+ * Given the machine name of a workflow state, return a keyed array representing
+ * the state.
  *
- * Note: this will retrieve states that have been deleted (their status key
- *   will be set to 0).
- *
- * @param $sid
- *   The ID of the workflow state.
+ * @param $name
+ *   The machine name of the workflow state.
+ * @param $inactive
+ *   Boolean to indicate to also return inactive states. Defaults to TRUE.
  * @return
- *   A keyed array with all attributes of the state.
+ *   The workflow state object.
  */
-function workflow_get_state($sid) {
-  $state = array();
-  $result = db_query('SELECT wid, state, weight, sysid, status FROM {workflow_states} WHERE sid = %d', $sid);
+function workflow_get_state($name, $inactive = TRUE) {
+  $sql = "SELECT * FROM {workflow_states} WHERE name = '%s'";
+
+  if (!$inactive) {
+    $sql .= " AND status = 1";
+  }
+  
+  $result = db_query($sql, $name);
   // State IDs are unique, so there should be only one row.
-  $data = db_fetch_object($result);
-  $state['wid'] = $data->wid;
-  $state['state'] = $data->state;
-  $state['weight'] = $data->weight;
-  $state['sysid'] = $data->sysid;
-  $state['status'] = $data->status;
+  $state = db_fetch_object($result);
+  $state->label = check_plain(t($state->label));
   return $state;
 }
 
@@ -1588,7 +1589,7 @@ function workflow_token_values($type, $object = NULL) {
         $workflow = workflow_load($machine_name);
         $values['workflow-name'] = $workflow->label;
         $values['workflow-machine-name'] = $machine_name;
-        $states = workflow_get_states($machine_name);
+        $states = workflow_get_states($machine_name, 'sid');
       }
       else {
         break;
@@ -1636,8 +1637,8 @@ function workflow_token_values($type, $object = NULL) {
         $mail = $account->uid ? $account->mail : '';
       }
 
-      $values['workflow-current-state-name']                =  $states[$sid];
-      $values['workflow-old-state-name']                    =  $states[$old_sid];
+      $values['workflow-current-state-name']                =  $states[$sid]->label;
+      $values['workflow-old-state-name']                    =  $states[$old_sid]->label;
 
       $values['workflow-current-state-date-iso']            =  date('Ymdhis', $date);
       $values['workflow-current-state-date-tstamp']         =  $date;

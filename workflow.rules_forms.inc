@@ -12,10 +12,10 @@
 function workflow_check_transition_form($settings, &$form) {
   $options = array();
   $options['ANY'] = t('Any state');
-  foreach (workflow_get_all() as $wid => $workflow) {
-    $options[$workflow] = array();
-    foreach (workflow_get_states($wid) as $sid => $state) {
-      $options[$workflow][$sid] = $state;
+  foreach (workflow_get_all() as $workflow) {
+    $options[$workflow->name] = array();
+    foreach (workflow_get_states($workflow->name) as $name => $state) {
+      $options[$workflow->name][$name] = $state->label;
     }
   }
   $form['settings']['from_state'] = array(
@@ -47,7 +47,7 @@ function workflow_check_transition_label($settings, $argument_labels) {
    foreach ($settings['from_state'] as $state) {
     if ($state != 'ANY') {
         $fromtemp = workflow_get_state($state);
-        $from[] = $fromtemp['state']; 
+        $from[] = $fromtemp->label; 
     } else {
         $from[] = t('Any state');
     }
@@ -55,7 +55,7 @@ function workflow_check_transition_label($settings, $argument_labels) {
   foreach ($settings['to_state'] as $state) {
     if ($state != 'ANY') {
         $totemp = workflow_get_state($state);
-        $to[] = $totemp['state']; 
+        $to[] = $totemp->label; 
     } else {
         $to[] = t('Any state');
     }

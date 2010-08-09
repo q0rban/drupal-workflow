@@ -374,6 +374,7 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
 
   if (isset($state_name)) {
     $state = workflow_get_state($state_name);
+    $form['#state'] = $state;
   }
 
   $form['workflow_name'] = array(
@@ -381,22 +382,23 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
     '#value' => $workflow_name,
   );
 
-  $form['state'] = array(
+  $form['label'] = array(
     '#type'  => 'textfield',
-    '#title' => t('State name'),
-    '#default_value' => empty($state['state']) ? '' : $state['state'],
+    '#title' => t('State label'),
+    '#default_value' => empty($state->label) ? '' : $state->label,
     '#size'  => '16',
     '#maxlength' => '254',
     '#required' => TRUE,
     '#description' => t('Enter the name for a state in your workflow. For example, if you were doing a meal workflow it may include states like <em>shop</em>, <em>prepare</em>, <em>eat</em>, and <em>clean up</em>.'),
   );
-  $form['state_name'] = array(
+  $form['name'] = array(
     '#type'  => 'textfield',
-    '#title' => t('State name'),
-    '#default_value' => empty($state['state_name']) ? '' : $state['state_name'],
+    '#title' => t('Machine name'),
+    '#default_value' => empty($state->name) ? '' : $state->name,
     '#size'  => '16',
     '#maxlength' => '254',
     '#required' => TRUE,
+    '#disabled' => !empty($state->name),
     '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
   );
 
@@ -405,18 +407,13 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
     drupal_set_title(t('Add a new state to workflow %workflow', array('%workflow' => workflow_get_name($workflow_name))));
   }
   else {
-    drupal_set_title(t('Edit workflow state @state', array('@state' => $state['state'])));
-    $form['sid'] = array(
-      '#type' => 'value',
-      '#value' => $state['sid'],
-    );
-    $form['state_name']['#disabled'] = TRUE;
+    drupal_set_title(t('Edit workflow state @state', array('@state' => $state->label)));
   }
 
   $form['weight'] = array(
     '#type' => 'weight',
     '#title' => t('Weight'),
-    '#default_value' => empty($state['weight']) ? 0 : $state['weight'],
+    '#default_value' => empty($state->weight) ? 0 : $state->weight,
     '#description' => t('In listings, the heavier states will sink and the lighter states will be positioned nearer the top.'),
   );
   $form['submit'] = array(
@@ -433,38 +430,37 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
  * @see workflow_state_form()
  */
 function workflow_state_form_validate($form, &$form_state) {
-  $name = $form_state['values']['state'];
-  $machine_name = $form_state['values']['state_name'];
+  $label = $form_state['values']['label'];
+  $machine_name = $form_state['values']['name'];
   $workflow_name = $form_state['values']['workflow_name'];
   $wf_states = workflow_get_states($workflow_name);
 
   // Make sure a name has been specified
-  if ($name == '') {
-    form_set_error('state', t('Please provide a name for the new state.'));
+  if ($label == '') {
+    form_set_error('label', t('Please provide a name for the new state.'));
   }
 
   // Make sure name is not a duplicate
   foreach($wf_states as $state) {
-    if ($state->label == $name) {
-      form_set_error('state', t('A state with the name %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $name)));
+    if ($state->label == $label || (empty($form['#state']) && $state->name == $machine_name)) {
+      if ($state->label == $label) {
+        form_set_error('label', t('A state with the label %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $label)));
+      }
+      if ($state->name == $machine_name) {
+        form_set_error('name', t('A state with the machine name %name already exists in this workflow. Please enter another machine name for this state.', array('%name' => $machine_name)));
+      }
       break;
     }
   }
 
   // Make sure a machine name has been specified
   if ($machine_name == '') {
-    form_set_error('state_name', t('Please provide a machine name for the new state.'));
+    form_set_error('name', t('Please provide a machine name for the new state.'));
   }
 
   // Make sure machine name contains only alnum chars and underscores.
   if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
-    form_set_error('state_name', t("The machine name must consist of alphanumeric or underscore characters only."));
-  }
-
-  // Make sure machine name is unique.
-  $query = "SELECT count(*) FROM {workflow_states} WHERE state_name = '%s'";
-  if (empty($form_state['values']['sid']) && db_result(db_query($query, $machine_name)) {
-    form_set_error('state_name', t("The machine name must be unique across <em>all</em> workflows."));
+    form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
   }
 }
 
@@ -479,8 +475,8 @@ function workflow_state_form_submit($form, &$form_state) {
     drupal_set_message(t('The workflow state was updated.'));
   }
   else {
-    watchdog('workflow', 'Created workflow state %name', array('%name' => $form_state['values']['state']));
-    drupal_set_message(t('The workflow state %name was created.', array('%name' => $form_state['values']['state'])));
+    watchdog('workflow', 'Created workflow state %name', array('%name' => $form_state['values']['label']));
+    drupal_set_message(t('The workflow state %name was created.', array('%name' => $form_state['values']['label'])));
   }
   $form_state['redirect'] = 'admin/build/workflow';
 }
