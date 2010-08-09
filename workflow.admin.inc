@@ -125,23 +125,23 @@ function workflow_delete_form_submit($form, &$form_state) {
 /**
  * View workflow permissions by role
  *
- * @param $machine_name
+ * @param $name
  *   The machine name of the workflow.
  */
-function workflow_permissions($machine_name) {
+function workflow_permissions($name) {
   $all = array();
   $roles = array('author' => t('author')) + user_roles();
   foreach ($roles as $role => $value) {
     $all[$role]['name'] = $value;
   }
   $result = db_query(
-    'SELECT t.roles, s1.state AS state_name, s2.state AS target_state_name ' .
+    'SELECT t.roles, s1.label AS state_name, s2.label AS target_state_name ' .
     'FROM {workflow_transitions} t ' .
     'INNER JOIN {workflow_states} s1 ON s1.sid = t.sid '.
     'INNER JOIN {workflow_states} s2 ON s2.sid = t.target_sid '.
     "WHERE s1.workflow_name = '%s' " .
-    'ORDER BY s1.weight ASC , s1.state ASC , s2.weight ASC , s2.state ASC',
-    $machine_name);
+    'ORDER BY s1.weight ASC , s1.label ASC , s2.weight ASC , s2.label ASC',
+    $name);
 
   while ($data = db_fetch_object($result)) {
     foreach (explode(',', $data->roles) as $role) {
@@ -174,8 +174,8 @@ function theme_workflow_permissions($header, $all) {
 /**
  * Menu callback. Edit a workflow's properties.
  *
- * @param $wid
- *   The ID of the workflow.
+ * @param $workflow
+ *   The workflow object.
  * @return
  *   HTML form and permissions table.
  */
@@ -242,7 +242,7 @@ function workflow_edit_form($form_state, $workflow) {
     '#collapsible' => TRUE,
   );
   $form['permissions']['summary'] = array(
-    '#value' => workflow_permissions($workflow->wid),
+    '#value' => workflow_permissions($workflow->name),
   );
 
   return $form;
