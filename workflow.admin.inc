@@ -84,26 +84,26 @@ function workflow_add_form_submit($form, &$form_state) {
 }
 
 /**
- * Form builder. Create form for confirmation of workflow deletion.
+ * Form for confirmation of workflow deletion.
  *
- * @param $machine_name
+ * @param $name
  *   The machine name of the workflow to delete.
  * @param $sid
  *   Optional state ID.
  * @return
  *   Form definition array.
  */
-function workflow_delete_form(&$form_state, $machine_name, $sid = NULL) {
+function workflow_delete_form(&$form_state, $name, $sid = NULL) {
   if (isset($sid)) {
     return workflow_state_delete_form($machine_name, $sid);
   }
-  $form['workflow_name'] = array(
+  $form['name'] = array(
     '#type' => 'value',
-    '#value' => $machine_name,
+    '#value' => $name,
   );
   return confirm_form(
     $form,
-    t('Are you sure you want to delete %title? All nodes that have a workflow state associated with this workflow will have those workflow states removed.', array('%title' => workflow_get_name($machine_name))),
+    t('Are you sure you want to delete %title? All nodes that have a workflow state associated with this workflow will have those workflow states removed.', array('%title' => workflow_get_label($name))),
     !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
     t('This action cannot be undone.'),
     t('Delete'),
@@ -118,11 +118,11 @@ function workflow_delete_form(&$form_state, $machine_name, $sid = NULL) {
  */
 function workflow_delete_form_submit($form, &$form_state) {
   if ($form_state['values']['confirm'] == 1) {
-    $machine_name = $form_state['values']['workflow_name'];
-    $name = workflow_get_name($machine_name);
-    workflow_deletewf($machine_name);
-    watchdog('workflow', 'Deleted workflow %name with all its states', array('%name' => $name));
-    drupal_set_message(t('The workflow %name with all its states was deleted.', array('%name' => $name)));
+    $name = $form_state['values']['name'];
+    $label = workflow_get_label($name);
+    workflow_deletewf($name);
+    watchdog('workflow', 'Deleted workflow %label with all its states', array('%label' => $label));
+    drupal_set_message(t('The workflow %label with all its states was deleted.', array('%label' => $label)));
     $form_state['redirect'] = 'admin/build/workflow';
   }
 }
@@ -134,7 +134,6 @@ function workflow_delete_form_submit($form, &$form_state) {
  *   The machine name of the workflow.
  */
 function workflow_permissions($machine_name) {
-  $name = workflow_get_name($machine_name);
   $all = array();
   $roles = array('author' => t('author')) + user_roles();
   foreach ($roles as $role => $value) {
@@ -263,7 +262,7 @@ function theme_workflow_edit_form($form) {
   $output = drupal_render($form['label']);
   $machine_name = $form['name']['#value'];
   $states = workflow_get_states($machine_name, 'sid');
-  drupal_set_title(t('Edit workflow %name', array('%name' => workflow_get_name($machine_name))));
+  drupal_set_title(t('Edit workflow %label', array('%label' => workflow_get_label($machine_name))));
   if ($states) {
     $roles = workflow_get_roles();
     $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
@@ -405,7 +404,7 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
 
   // Set the title and form based on whether we editing or creating.
   if (!isset($state) || $state === FALSE) {
-    drupal_set_title(t('Add a new state to workflow %workflow', array('%workflow' => workflow_get_name($workflow_name))));
+    drupal_set_title(t('Add a new state to workflow %workflow', array('%workflow' => workflow_get_label($workflow_name))));
   }
   else {
     drupal_set_title(t('Edit workflow state @state', array('@state' => $state->label)));
@@ -606,9 +605,9 @@ function workflow_overview() {
  * @return
  *   Form array.
  */
-function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
-  $states = workflow_get_states($workflow_name);
-  $state = $states[$state_name];
+function workflow_state_delete_form($form_state, $workflow_name, $name) {
+  $states = $form['#states'] = workflow_get_state_names($workflow_name);
+  $label = $states[$name];
 
   // Will any nodes have no state if this state is deleted?
   if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE sid = %d", $state->sid))) {
@@ -622,7 +621,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 
     // Don't include the state to be deleted in our list of possible
     // states that can be assigned.
-    unset($states[$state_name]);
+    unset($states[$name]);
     if ($states) {
       $form['new_state'] = array(
         '#type' => 'select',
@@ -642,14 +641,14 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
     '#type' => 'value',
     '#value' => $workflow_name,
   );
-  $form['state_name'] = array(
+  $form['name'] = array(
     '#type' => 'value',
-    '#value' => $state_name,
+    '#value' => $name,
   );
 
   return confirm_form(
     $form,
-    t('Are you sure you want to delete %title (and all its transitions)?', array('%title' => $state_name)),
+    t('Are you sure you want to delete %label (and all its transitions)?', array('%label' => $label)),
     !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
     t('This action cannot be undone.'),
     t('Delete'),
@@ -663,14 +662,14 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
  * @see workflow_state_delete_form()
  */
 function workflow_state_delete_form_submit($form, &$form_state) {
-  $states = workflow_get_states($form_state['values']['workflow_name']);
-  $state = $states[$form_state['values']['state_name']];
-  $name = 
+  $states = $form['#states'];
+  $name = $form_state['values']['name'];
+  $label = $states[$form_state['values']['name']];
   if ($form_state['values']['confirm'] == 1) {
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
-    workflow_state_delete($form_state['values']['state_name'], $new_state);
-    watchdog('workflow', 'Deleted workflow state %name', array('%name' => $state_name));
-    drupal_set_message(t('The workflow state %name was deleted.', array('%name' => $state_name)));
+    workflow_state_delete($name, $new_state);
+    watchdog('workflow', 'Deleted workflow state %label', array('%label' => $label));
+    drupal_set_message(t('The workflow state %label was deleted.', array('%label' => $label)));
   }
   $form_state['redirect'] = 'admin/build/workflow';
 }
@@ -681,7 +680,7 @@ function workflow_state_delete_form_submit($form, &$form_state) {
  */
 function workflow_types_form() {
   $form = array();
-  $workflows = workflow_get_all_names('wid');
+  $workflows = workflow_get_all_labels('wid');
   if (count($workflows) == 0) {
     return $form;
   }

@@ -962,15 +962,16 @@ function workflow_is_system_state($state) {
 }
 
 /**
- * Given the machine name of a workflow, return its name.
+ * Given the machine name of a workflow, return its label.
  *
  * @param string $name
  *   The machine name of the workflow.
  * @return string
  *   The name of the workflow.
  */
-function workflow_get_name($name) {
-  return db_result(db_query("SELECT name FROM {workflows} WHERE workflow_name = '%s'", $name));
+function workflow_get_label($name) {
+  $label = db_result(db_query("SELECT label FROM {workflows} WHERE name = '%s'", $name));
+  return check_plain(t($label));
 }
 
 /**
@@ -1001,16 +1002,16 @@ function workflow_get_workflow_for_type($type) {
  * @return
  *   An array of workflows.
  */
-function workflow_get_all($column = 'workflow_name') {
+function workflow_get_all($column = 'name') {
   // Default to 'name' if an invalid key is used.
-  $key_options = array('wid', 'name', 'label');
-  $key = in_array($key, $key_options) ? $key : 'name';
+  $column_options = array('wid', 'name', 'label');
+  $column = in_array($column, $column_options) ? $column : 'name';
 
   $workflows = array();
   $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
   while ($data = db_fetch_object($result)) {
     $data->label = check_plain(t($data->label));
-    $workflows[$data->{$key}] = $data;
+    $workflows[$data->{$column}] = $data;
   }
   return $workflows;
 }
@@ -1020,11 +1021,11 @@ function workflow_get_all($column = 'workflow_name') {
  *
  * @param $column
  *   The table field to key the workflow from. Options are 'wid', 
- *   'workflow_name', and 'label'. Defaults to 'workflow_name'.
+ *   'workflow_name', and 'label'. Defaults to 'name'.
  * @return
  *   An array of workflow names.
  */
-function workflow_get_all_names($column = 'workflow_name') {
+function workflow_get_all_labels($column = 'name') {
   $workflows = workflow_get_all($column);
 
   foreach ($workflows as $key => $workflow) {
@@ -1085,7 +1086,6 @@ function workflow_update($wid, $name, $tab_roles, $options) {
  *   The ID of the workflow.
  */
 function workflow_deletewf($wid) {
-  $wf = workflow_get_name($wid);
   $result = db_query('SELECT sid FROM {workflow_states} WHERE wid = %d', $wid);
   while ($data = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
