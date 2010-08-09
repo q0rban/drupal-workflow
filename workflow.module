@@ -7,6 +7,7 @@
  */
 
 define('WORKFLOW_CREATION', 1);
+define('WORKFLOW_CREATION_NAME', 'creation');
 define('WORKFLOW_CREATION_DEFAULT_WEIGHT', -50);
 define('WORKFLOW_DELETION', 0);
 define('WORKFLOW_ARROW', '&#8594;');
@@ -1045,7 +1046,8 @@ function workflow_create($workflow) {
 
   drupal_write_record('workflows', (object) $workflow);
   workflow_state_save(array(
-    'workflow_name' => $workflow['wid'],
+    'name' => WORKFLOW_CREATION_NAME,
+    'workflow_name' => $workflow['name'],
     'state' => t('(creation)'),
     'sysid' => WORKFLOW_CREATION,
     'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
