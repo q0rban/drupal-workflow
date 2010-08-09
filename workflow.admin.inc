@@ -27,6 +27,7 @@ function workflow_add_form(&$form_state) {
   $form['name'] = array(
     '#type' => 'textfield',
     '#title' => t('Machine Name'),
+    '#description' => t('Enter the machine name for this workflow. Must be unique and use only alphanumeric characters and underscores.'),
     '#maxlength' => '254',
   );
   $form['submit'] = array(
