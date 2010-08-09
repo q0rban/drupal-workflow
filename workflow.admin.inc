@@ -456,7 +456,7 @@ function workflow_state_form_validate($form, &$form_state) {
 
     // Ensure that this machine name is unique.
     if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
-      form_set_error('name', t('A state with the machine name %name already exists. Please enter another machine name for this state.', array('%name' => $machine_name)));
+      form_set_error('name', t('A state with the machine name %name already exists. You might try pre-fixing it with the machine name of the workflow, such as %example.', array('%name' => $machine_name, '%example' => $workflow_name .'_'. $machine_name)));
     }
   }
 }
@@ -467,13 +467,13 @@ function workflow_state_form_validate($form, &$form_state) {
  * @see workflow_state_form()
  */
 function workflow_state_form_submit($form, &$form_state) {
-  $form_state['sid'] = workflow_state_save($form_state['values']);
+  $state = workflow_state_save($form_state['values']);
   if (array_key_exists('sid', $form_state['values'])) {
     drupal_set_message(t('The workflow state was updated.'));
   }
   else {
-    watchdog('workflow', 'Created workflow state %name', array('%name' => $form_state['values']['label']));
-    drupal_set_message(t('The workflow state %name was created.', array('%name' => $form_state['values']['label'])));
+    watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
+    drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
   }
   $form_state['redirect'] = 'admin/build/workflow';
 }
