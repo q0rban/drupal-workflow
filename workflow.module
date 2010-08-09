@@ -1082,20 +1082,20 @@ function workflow_update($wid, $name, $tab_roles, $options) {
  * transitions and node type mappings, too. Removes workflow state
  * information from nodes participating in this workflow.
  *
- * @param $wid
- *   The ID of the workflow.
+ * @param $name
+ *   The machine name of the workflow.
  */
-function workflow_deletewf($wid) {
-  $result = db_query('SELECT sid FROM {workflow_states} WHERE wid = %d', $wid);
+function workflow_deletewf($name) {
+  $result = db_query("SELECT sid FROM {workflow_states} WHERE workflow_name = '%s'", $name);
   while ($data = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
     workflow_state_delete($data->sid);
     db_query('DELETE FROM {workflow_node} WHERE sid = %d', $data->sid);
   }
-  db_query("DELETE FROM {workflow_type_map} WHERE wid = %d", $wid);
-  db_query('DELETE FROM {workflows} WHERE wid = %d', $wid);
+  db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $name);
+  db_query("DELETE FROM {workflows} WHERE name = '%s'", $name);
   // Notify any interested modules.
-  module_invoke_all('workflow', 'workflow delete', $wid, NULL, NULL);
+  module_invoke_all('workflow', 'workflow delete', $name, NULL, NULL);
   // Workflow deletion affects tabs (local tasks), so force menu rebuild.
   cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
