@@ -39,7 +39,8 @@ function workflow_schema() {
       'type' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '')),
     'indexes' => array(
-      'type_name' => array('type', 'workflow_name')),
+      'type' => array('type'),
+      'workflow_name' => array('workflow_name')),
   );
   $schema['workflow_transitions'] = array(
     'fields' => array(
@@ -444,7 +445,11 @@ function workflow_update_6102() {
   $schema['workflow_type_map'] = array(
     'fields' => array('workflow_name' => $name_field),
     'deleted fields' => array('wid'),
-    'indexes' => array('type_name' => array('type', 'workflow_name')),
+    'indexes' => array(
+      'type' => array('type'),
+      'workflow_name' => array('workflow_name'),
+    ),
+    'deleted indexes' => array('type'),
   );
   $schema['workflow_states'] = array(
     'renamed fields' => array('state' => 'label'),
@@ -454,6 +459,7 @@ function workflow_update_6102() {
     ),
     'deleted fields' => array('wid'),
     'indexes' => array('workflow_name' => array('workflow_name')),
+    'deleted indexes' => array('wid'),
   );
 
   // Rename existing fields and add new ones as needed.
@@ -503,9 +509,15 @@ function workflow_update_6102() {
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
   }
 
-  // Now that that's done, add unique keys and indexes where necessary, and 
-  // drop old fields.
+  // Now that that's done, add/delete unique keys and indexes where necessary, 
+  // and drop old fields.
   foreach ($schema as $table => $table_schema) {
+    if (!empty($table_schema['deleted indexes'])) {
+      // Delete old indexes.
+      foreach ($table_schema['deleted indexes'] as $index) {
+        db_drop_index($ret, $table, $index);
+      }
+    }
     if (!empty($table_schema['indexes'])) {
       // Add new indexes to appropriate tables.
       foreach ($table_schema['indexes'] as $name => $fields) {
