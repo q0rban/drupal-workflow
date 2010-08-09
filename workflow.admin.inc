@@ -63,7 +63,7 @@ function workflow_add_form_validate($form, &$form_state) {
     form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
   }
   // Make sure workflow name is not a duplicate.
-  if (db_result(db_query("SELECT COUNT(*) FROM {workflow} WHERE name = '%s'"))) {
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE name = '%s'"))) {
     form_set_error('name', t('A workflow with the machine name %name already exists. Please enter another name for your new workflow.',
       array('%name' => $values['name'])));
   }
