@@ -996,18 +996,18 @@ function workflow_get_workflow_for_type($type) {
  * Get all workflows.
  *
  * @param $column
- *   The table column to key the workflow from. Options are 'wid', 
- *   'workflow_name', and 'label'. Defaults to 'workflow_name'.
+ *   The table column to key the workflow from. Options are 'wid', 'name', and 
+ *   'label'. Defaults to 'name'.
  * @return
  *   An array of workflows.
  */
 function workflow_get_all($column = 'workflow_name') {
-  // Default to workflow_name if an invalid key is used.
-  $key_options = array('wid', 'workflow_name', 'label');
-  $key = in_array($key, $key_options) ? $key : 'workflow_name';
+  // Default to 'name' if an invalid key is used.
+  $key_options = array('wid', 'name', 'label');
+  $key = in_array($key, $key_options) ? $key : 'name';
 
   $workflows = array();
-  $result = db_query("SELECT * FROM {workflows} ORDER BY name ASC");
+  $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
   while ($data = db_fetch_object($result)) {
     $data->label = check_plain(t($data->label));
     $workflows[$data->{$key}] = $data;

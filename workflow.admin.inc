@@ -43,7 +43,6 @@ function workflow_add_form(&$form_state) {
  */
 function workflow_add_form_validate($form, &$form_state) {
   $values = $form_state['values'];
-  $workflows = array_flip(workflow_get_all());
   // Make sure a nonblank workflow name is provided.
   if ($values['label'] == '') {
     form_set_error('label', t('Please provide a nonblank name for the new workflow.'));
@@ -191,18 +190,18 @@ function workflow_edit_form($form_state, $workflow) {
     '#type' => 'value',
     '#value' => $workflow->wid,
   );
-  $form['workflow_name'] = array(
+  $form['name'] = array(
     '#type' => 'value',
-    '#value' => $workflow->workflow_name,
+    '#value' => $workflow->name,
   );
   $form['basic'] = array(
     '#type' => 'fieldset',
     '#title' => t('Workflow information')
   );
-  $form['basic']['wf_name'] = array(
+  $form['basic']['label'] = array(
     '#type' => 'textfield',
     '#default_value' => $workflow->label,
-    '#title' => t('Workflow Name'),
+    '#title' => t('Workflow Label'),
     '#size' => '16',
     '#maxlength' => '254',
   );
@@ -261,8 +260,8 @@ function workflow_edit_form($form_state, $workflow) {
  * @see workflow_edit_form()
  */
 function theme_workflow_edit_form($form) {
-  $output = drupal_render($form['wf_name']);
-  $machine_name = $form['workflow_name']['#value'];
+  $output = drupal_render($form['label']);
+  $machine_name = $form['name']['#value'];
   $states = workflow_get_states($machine_name, 'sid');
   drupal_set_title(t('Edit workflow %name', array('%name' => workflow_get_name($machine_name))));
   if ($states) {
@@ -313,19 +312,21 @@ function theme_workflow_edit_form($form) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_validate($form_id, $form_state) {
-  $machine_name = $form_state['values']['workflow_name'];
+  $machine_name = $form_state['values']['name'];
   // Make sure workflow name is not a duplicate.
-  if (array_key_exists('wf_name', $form_state['values']) && $form_state['values']['wf_name'] != '') {
-    $name = $form_state['values']['wf_name'];
-    $workflows = array_flip(workflow_get_all());
-    if (array_key_exists($name, $workflows) && $machine_name != $workflows[$name]) {
-      form_set_error('wf_name', t('A workflow with the name %name already exists. Please enter another name for this workflow.',
-        array('%name' => $name)));
+  if (array_key_exists('label', $form_state['values']) && $form_state['values']['label'] != '') {
+    $label = check_plain(t($form_state['values']['label']));
+    foreach (workflow_get_all() as $name => $workflow) {
+      if ($name != $machine_name && $label == $workflow->label) {
+        form_set_error('label', t('A workflow with the label %label already exists. Please enter another label for this workflow.',
+          array('%label' => $label)));
+        break;
+      }
     }
   }
   else {
   // No workflow name was provided.
-    form_set_error('wf_name', t('Please provide a nonblank name for this workflow.'));
+    form_set_error('label', t('Please provide a nonblank label for this workflow.'));
   }
 
   // Make sure 'author' is checked for (creation) -> [something].
@@ -354,7 +355,7 @@ function workflow_edit_form_submit($form, &$form_state) {
   if (isset($form_state['values']['transitions'])) {
     workflow_update_transitions($form_state['values']['transitions']);
   }
-  workflow_update($form_state['values']['wid'], $form_state['values']['wf_name'], array_filter($form_state['values']['tab_roles']), array('comment_log_node' => $form_state['values']['comment_log_node'], 'comment_log_tab' => $form_state['values']['comment_log_tab']));
+  workflow_update($form_state['values']['wid'], $form_state['values']['label'], array_filter($form_state['values']['tab_roles']), array('comment_log_node' => $form_state['values']['comment_log_node'], 'comment_log_tab' => $form_state['values']['comment_log_tab']));
   drupal_set_message(t('The workflow was updated.'));
   $form_state['redirect'] = 'admin/build/workflow';
 }
@@ -680,10 +681,12 @@ function workflow_state_delete_form_submit($form, &$form_state) {
  */
 function workflow_types_form() {
   $form = array();
-  $workflows = array('<' . t('None') . '>') + workflow_get_all();
+  $workflows = workflow_get_all_names('wid');
   if (count($workflows) == 0) {
     return $form;
   }
+
+  $options = array('<'. t('None') .'>') + $workflows;
 
   $type_map = array();
   $result = db_query("SELECT wid, type FROM {workflow_type_map}");
@@ -702,7 +705,7 @@ function workflow_types_form() {
     $form[$type]['workflow'] = array(
       '#type' => 'select',
       '#title' => check_plain($name),
-      '#options' => $workflows,
+      '#options' => $options,
       '#default_value' => isset($type_map[$type]) ? $type_map[$type] : 0
     );
     $form[$type]['placement'] = array(
