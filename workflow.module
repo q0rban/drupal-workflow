@@ -1040,15 +1040,17 @@ function workflow_get_all_labels($column = 'name') {
  *
  * @param $workflow
  *   An array of values needed to create a workflow.
+ * @return
+ *   The saved workflow object.
  */
 function workflow_create($workflow) {
   $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
   $workflow += $default;
 
-  drupal_write_record('workflows', (object) $workflow);
+  drupal_write_record('workflows', $workflow);
   workflow_state_save(array(
     'name' => WORKFLOW_CREATION_NAME,
-    'workflow_name' => $workflow['name'],
+    'workflow_name' => $workflow->name,
     'state' => t('(creation)'),
     'sysid' => WORKFLOW_CREATION,
     'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
@@ -1217,7 +1219,7 @@ function workflow_state_save($state) {
     drupal_write_record('workflow_states', $state, 'sid');
   }
 
-  return $state['sid'];
+  return $state;
 }
 
 /**
