@@ -30,7 +30,7 @@ function workflow_schema() {
       'name'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'label'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'tab_roles'    => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
-      'options'      => array('type' => 'text', 'size' => 'big', 'not null' => FALSE)),
+      'options'      => array('type' => 'text', 'size' => 'big', 'not null' => FALSE, 'serialize' => TRUE)),
     'primary key'    => array('wid'),
     'unique keys'    => array('name' => array('name')),
   );
