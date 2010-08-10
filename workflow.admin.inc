@@ -37,9 +37,11 @@ function workflow_add_form(&$form_state) {
  * @see workflow_add_form()
  */
 function workflow_add_form_validate($form, &$form_state) {
+  $form_state['values']['name'] = strtolower($form_state['values']['name']);
   $values = $form_state['values'];
+
   // Make sure workflow name is not a duplicate.
-  if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE label = '%s'"))) {
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE label = '%s'", $values['label']))) {
     form_set_error('label', t('A workflow with the name %name already exists. Please enter another name for your new workflow.',
       array('%name' => $values['label'])));
   }
@@ -69,7 +71,7 @@ function workflow_add_form_submit($form, &$form_state) {
   $values = $form_state['values'];
 
   $workflow['label'] = $values['label'];
-  $workflow['name'] = $values['name'];
+  $workflow['name'] = strtolower($values['name']);
 
   if ($workflow = workflow_create($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
@@ -440,11 +442,6 @@ function workflow_state_form_validate($form, &$form_state) {
   $workflow_name = $form_state['values']['workflow_name'];
   $wf_states = workflow_get_states($workflow_name);
 
-  // Make sure a name has been specified
-  if ($label == '') {
-    form_set_error('label', t('Please provide a name for the new state.'));
-  }
-
   // Make sure name is not a duplicate
   foreach($wf_states as $state) {
     if ($state->label == $label) {
@@ -454,11 +451,6 @@ function workflow_state_form_validate($form, &$form_state) {
   }
 
   if (empty($form['#state'])) {
-    // Make sure a machine name has been specified
-    if ($machine_name == '') {
-      form_set_error('name', t('Please provide a machine name for the new state.'));
-    }
-
     // Make sure machine name contains only alnum chars and underscores.
     if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
       form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
