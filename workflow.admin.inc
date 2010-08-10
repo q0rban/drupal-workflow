@@ -179,6 +179,7 @@ function theme_workflow_permissions($header, $all) {
  *   HTML form and permissions table.
  */
 function workflow_edit_form($form_state, $workflow) {
+  $form['#workflow'] = $workflow;
   $form['wid'] = array(
     '#type' => 'value',
     '#value' => $workflow->wid,
@@ -227,7 +228,7 @@ function workflow_edit_form($form_state, $workflow) {
     '#description' => t('Select any roles that should have access to the workflow tab on nodes that have a workflow.'),
   );
 
-  $form['transitions'] = workflow_transition_grid_form($workflow->wid);
+  $form['transitions'] = workflow_transition_grid_form($workflow->name);
   $form['transitions']['#tree'] = TRUE;
 
   $form['submit'] = array(
@@ -261,14 +262,14 @@ function theme_workflow_edit_form($form) {
     $roles = workflow_get_roles();
     $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
     $rows = array();
-    foreach ($states as $state_id => $name) {
+    foreach ($states as $state_id => $state) {
       // Don't allow transition TO (creation).
-      if ($name != t('(creation)')) {
-        $header[] = array('data' => check_plain(t($name)));
+      if (!workflow_is_system_state($state->label)) {
+        $header[] = array('data' => $state->label);
       }
-      $row = array(array('data' => check_plain(t($name))));
-      foreach ($states as $nested_state_id => $nested_name) {
-        if ($nested_name == t('(creation)')) {
+      $row = array(array('data' => $state->label));
+      foreach ($states as $nested_state_id => $nested_state) {
+        if (workflow_is_system_state($nested_state->label)) {
           // Don't allow transition TO (creation).
           continue;
         }
@@ -505,9 +506,9 @@ function workflow_transition_grid_form($machine_name) {
     );
     return $form;
   }
-  foreach ($states as $state_id => $name) {
-    foreach ($states as $nested_state_id => $nested_name) {
-      if ($nested_name == t('(creation)')) {
+  foreach ($states as $state_id => $state) {
+    foreach ($states as $nested_state_id => $nested_state) {
+      if (workflow_is_system_state($nested_state->label)) {
         // Don't allow transition TO (creation).
         continue;
       }

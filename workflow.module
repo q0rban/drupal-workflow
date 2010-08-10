@@ -832,7 +832,7 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  *   Object representing the workflow.
  */
 function workflow_load($name) {
-  $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE workflow_name = '%s'", $name));
+  $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE name = '%s'", $name));
   $workflow->options = unserialize($workflow->options);
   return $workflow;
 }
