@@ -1051,9 +1051,9 @@ function workflow_create($workflow) {
 
   if (drupal_write_record('workflows', $workflow)) {
     workflow_state_save(array(
-      'name' => WORKFLOW_CREATION_NAME,
+      'name' => $workflow->name .'_'. WORKFLOW_CREATION_NAME,
       'workflow_name' => $workflow->name,
-      'state' => t('(creation)'),
+      'label' => t('(creation)'),
       'sysid' => WORKFLOW_CREATION,
       'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
