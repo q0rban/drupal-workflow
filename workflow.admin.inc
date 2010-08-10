@@ -384,6 +384,11 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
   if (isset($state_name)) {
     $state = workflow_get_state($state_name);
     $form['#state'] = $state;
+
+    // Don't allow users to edit a system state.
+    if (workflow_is_system_state($state->label)) {
+      return drupal_access_denied();
+    }
   }
 
   $form['workflow_name'] = array(
@@ -619,6 +624,11 @@ function workflow_overview() {
 function workflow_state_delete_form($form_state, $workflow_name, $name) {
   $states = $form['#states'] = workflow_get_state_names($workflow_name);
   $label = $states[$name];
+
+  // Don't allow users to delete a system state.
+  if (workflow_is_system_state($label)) {
+    return drupal_access_denied();
+  }
 
   // Will any nodes have no state if this state is deleted?
   if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE sid = %d", $state->sid))) {
