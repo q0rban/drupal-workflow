@@ -1050,15 +1050,18 @@ function workflow_create($workflow) {
   $workflow = (object) $workflow;
 
   if (drupal_write_record('workflows', $workflow)) {
-    workflow_state_save(array(
+    $state = array(
       'name' => $workflow->name .'_'. WORKFLOW_CREATION_NAME,
       'workflow_name' => $workflow->name,
       'label' => t('(creation)'),
       'sysid' => WORKFLOW_CREATION,
-      'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
+      'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT,
+    );
+    workflow_state_save($state);
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     menu_rebuild();
   }
+
   return $workflow;
 }
 
@@ -1363,7 +1366,7 @@ function workflow_types_save($form_values) {
   db_query("DELETE FROM {workflow_type_map}");
   $node_types = node_get_types();
   foreach ($node_types as $type => $name) {
-    db_query("INSERT INTO {workflow_type_map} (type, wid) VALUES ('%s', %d)", $type, $form_values[$type]['workflow']);
+    db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $form_values[$type]['workflow_name']);
     variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
   }
 }

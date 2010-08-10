@@ -8,25 +8,19 @@
 
 /**
  * Form builder. Create the form for adding a workflow.
- *
- * @param $name
- *   Name of the workflow if editing.
- * @param $add
- *   Boolean, if true edit workflow name.
- *
- * @return
- *   HTML form.
  */
 function workflow_add_form(&$form_state) {
   $form = array();
   $form['label'] = array(
     '#type' => 'textfield',
     '#title' => t('Workflow Label'),
+    '#required' => TRUE,
     '#maxlength' => '254',
   );
   $form['name'] = array(
     '#type' => 'textfield',
     '#title' => t('Machine Name'),
+    '#required' => TRUE,
     '#description' => t('Enter the machine name for this workflow. Must be unique and use only alphanumeric characters and underscores.'),
     '#maxlength' => '254',
   );
@@ -44,20 +38,12 @@ function workflow_add_form(&$form_state) {
  */
 function workflow_add_form_validate($form, &$form_state) {
   $values = $form_state['values'];
-  // Make sure a nonblank workflow name is provided.
-  if ($values['label'] == '') {
-    form_set_error('label', t('Please provide a nonblank name for the new workflow.'));
-  }
   // Make sure workflow name is not a duplicate.
   if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE label = '%s'"))) {
     form_set_error('label', t('A workflow with the name %name already exists. Please enter another name for your new workflow.',
       array('%name' => $values['label'])));
   }
 
-  // Make sure a nonblank workflow name is provided.
-  if ($values['name'] == '') {
-    form_set_error('name', t('Please provide a nonblank name for the new workflow.'));
-  }
   // Make sure machine name contains only alnum chars and underscores.
   if (preg_match("/[^[:alnum:]_]/", $values['name'])) {
     form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
@@ -65,6 +51,11 @@ function workflow_add_form_validate($form, &$form_state) {
   // Make sure workflow name is not a duplicate.
   if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE name = '%s'", $values['name']))) {
     form_set_error('name', t('A workflow with the machine name %name already exists. Please enter another name for your new workflow.',
+      array('%name' => $values['name'])));
+  }
+  // Make sure the workflow name isn't associated with disabled states.
+  if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE workflow_name = '%s'", $values['name']))) {
+    form_set_error('name', t('It appears this machine name has previously disabled states. Please enter another name for your new workflow.',
       array('%name' => $values['name'])));
   }
 }
@@ -82,8 +73,7 @@ function workflow_add_form_submit($form, &$form_state) {
 
   if ($workflow = workflow_create($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
-    drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.',
-      array('%label' => $workflow->label)), 'status');
+    drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.', array('%label' => $workflow->label)), 'status');
     $form_state['redirect'] = 'admin/build/workflow/state/'. $workflow->name;
   }
   else {
@@ -701,7 +691,7 @@ function workflow_state_delete_form_submit($form, &$form_state) {
  */
 function workflow_types_form() {
   $form = array();
-  $workflows = workflow_get_all_labels('wid');
+  $workflows = workflow_get_all_labels();
   if (count($workflows) == 0) {
     return $form;
   }
@@ -711,7 +701,7 @@ function workflow_types_form() {
   $type_map = array();
   $result = db_query("SELECT * FROM {workflow_type_map}");
   while ($data = db_fetch_object($result)) {
-    $type_map[$data->type] = $data->wid;
+    $type_map[$data->type] = $data->workflow_name;
   }
 
   $form['#theme'] = 'workflow_types_form';
@@ -722,7 +712,7 @@ function workflow_types_form() {
   );
 
   foreach (node_get_types('names') as $type => $name) {
-    $form[$type]['workflow'] = array(
+    $form[$type]['workflow_name'] = array(
       '#type' => 'select',
       '#title' => check_plain($name),
       '#options' => $options,
@@ -751,9 +741,9 @@ function theme_workflow_types_form($form) {
   $header = array(t('Content Type'), t('Workflow'), t('Display Workflow Form for:'));
   $rows = array();
   foreach (node_get_types('names') as $type => $name) {
-    $name = $form[$type]['workflow']['#title'];
-    unset($form[$type]['workflow']['#title']);
-    $rows[] = array($name, drupal_render($form[$type]['workflow']), drupal_render($form[$type]['placement']));
+    $name = $form[$type]['workflow_name']['#title'];
+    unset($form[$type]['workflow_name']['#title']);
+    $rows[] = array($name, drupal_render($form[$type]['workflow_name']), drupal_render($form[$type]['placement']));
   }
   $output = drupal_render($form['help']);
   $output .= theme('table', $header, $rows);
