@@ -63,7 +63,7 @@ function workflow_add_form_validate($form, &$form_state) {
     form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
   }
   // Make sure workflow name is not a duplicate.
-  if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE name = '%s'"))) {
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflows} WHERE name = '%s'", $values['name']))) {
     form_set_error('name', t('A workflow with the machine name %name already exists. Please enter another name for your new workflow.',
       array('%name' => $values['name'])));
   }
@@ -76,12 +76,20 @@ function workflow_add_form_validate($form, &$form_state) {
  */
 function workflow_add_form_submit($form, &$form_state) {
   $values = $form_state['values'];
-  $workflow = workflow_create($values);
-  watchdog('workflow', 'Created workflow %name', array('%name' => $values['label']));
-  drupal_set_message(t('The workflow %name was created. You should now add states to your workflow.',
-    array('%name' => $workflow_name)), 'status');
-  $form_state['wid'] = $wid;
-  $form_state['redirect'] = 'admin/build/workflow/state/'. $workflow->name;
+
+  $workflow['label'] = $values['label'];
+  $workflow['name'] = $values['name'];
+
+  if ($workflow = workflow_create($workflow)) {
+    watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
+    drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.',
+      array('%label' => $workflow->label)), 'status');
+    $form_state['redirect'] = 'admin/build/workflow/state/'. $workflow->name;
+  }
+  else {
+    watchdog('workflow', 'There was an error creating workflow %label', array('%label' => $values['label']), WATCHDOG_WARNING);
+    drupal_set_message(t('There was a problem saving this workflow. Please contact your site administrator.'), 'warning');
+  }
 }
 
 /**
@@ -368,6 +376,11 @@ function workflow_edit_form_submit($form, &$form_state) {
 function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
   $form['wid'] = array('#type' => 'value', '#value' => $wid);
 
+  if (!isset($workflow_name)) {
+    drupal_set_message(t('You must first select a workflow to add a state to.'));
+    drupal_goto('admin/build/workflow');
+  }
+
   if (isset($state_name)) {
     $state = workflow_get_state($state_name);
     $form['#state'] = $state;
@@ -551,7 +564,7 @@ function workflow_overview() {
       unset($links['workflow_overview_actions']);
     }
 
-    $row[] = array(check_plain(t($name)), theme('links', $links));
+    $row[] = array(check_plain(t($workflow->label)), theme('links', $links));
     $subrows = array();
 
     foreach ($states as $state_name => $state) {

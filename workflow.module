@@ -1047,15 +1047,18 @@ function workflow_create($workflow) {
   $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
   $workflow += $default;
 
-  drupal_write_record('workflows', $workflow);
-  workflow_state_save(array(
-    'name' => WORKFLOW_CREATION_NAME,
-    'workflow_name' => $workflow->name,
-    'state' => t('(creation)'),
-    'sysid' => WORKFLOW_CREATION,
-    'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
-  // Workflow creation affects tabs (local tasks), so force menu rebuild.
-  menu_rebuild();
+  $workflow = (object) $workflow;
+
+  if (drupal_write_record('workflows', $workflow)) {
+    workflow_state_save(array(
+      'name' => WORKFLOW_CREATION_NAME,
+      'workflow_name' => $workflow->name,
+      'state' => t('(creation)'),
+      'sysid' => WORKFLOW_CREATION,
+      'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT));
+    // Workflow creation affects tabs (local tasks), so force menu rebuild.
+    menu_rebuild();
+  }
   return $workflow;
 }
 
