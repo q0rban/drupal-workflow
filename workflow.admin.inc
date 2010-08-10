@@ -699,7 +699,7 @@ function workflow_types_form() {
   $options = array('<'. t('None') .'>') + $workflows;
 
   $type_map = array();
-  $result = db_query("SELECT wid, type FROM {workflow_type_map}");
+  $result = db_query("SELECT * FROM {workflow_type_map}");
   while ($data = db_fetch_object($result)) {
     $type_map[$data->type] = $data->wid;
   }
