@@ -55,16 +55,17 @@ function workflow_schema() {
   );
   $schema['workflow_states'] = array(
     'fields' => array(
-      'sid'    => array('type' => 'serial', 'not null' => TRUE),
-      'name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'sid'           => array('type' => 'serial', 'not null' => TRUE),
+      'name'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'label'  => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'weight' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
-      'sysid'  => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
-      'status' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 1, 'disp-width' => '4')),
-    'primary key' => array('sid'),
+      'label'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'weight'        => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
+      'sysid'         => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
+      'status'        => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 1, 'disp-width' => '4')),
+    'primary key'     => array('sid'),
+    'unique keys'     => array('name' => array('name')),
     'indexes' => array(
-      'sysid' => array('sysid'),
+      'sysid'         => array('sysid'),
       'workflow_name' => array('workflow_name')),
   );
   $schema['workflow_scheduled_transition'] = array(
@@ -430,43 +431,15 @@ function workflow_update_6101() {
 /**
  * Update Workflow to use machine names
  */
-function workflow_update_6102() {
+function workflow_update_6200() {
   $ret = array();
-
-  // Set up the schema changes in an array.
-  // Every name field is the same.
-  $name_field = array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '');
-  $schema = array();
-  $schema['workflows'] = array(
-    'renamed fields' => array('name' => 'label'),
-    'fields' => array('name' => $name_field + array('sql')),
-    'unique keys' => array('name' => array('name')),
-  );
-  $schema['workflow_type_map'] = array(
-    'fields' => array('workflow_name' => $name_field),
-    'deleted fields' => array('wid'),
-    'indexes' => array(
-      'type' => array('type'),
-      'workflow_name' => array('workflow_name'),
-    ),
-    'deleted indexes' => array('type'),
-  );
-  $schema['workflow_states'] = array(
-    'renamed fields' => array('state' => 'label'),
-    'fields' => array(
-      'name' => $name_field,
-      'workflow_name' => $name_field,
-    ),
-    'deleted fields' => array('wid'),
-    'indexes' => array('workflow_name' => array('workflow_name')),
-    'deleted indexes' => array('wid'),
-  );
+  $schema = _workflow_update_6200_schema();
 
   // Rename existing fields and add new ones as needed.
   foreach ($schema as $table => $table_schema) {
-    if (!empty($table_schema['renamed fields'])) {
-      foreach ($table_schema['renamed fields'] as $old => $new) {
-        $ret[] = update_sql('ALTER TABLE {'. $table .'} RENAME "'. $old .'" TO "'. $new .'"');
+    if (!empty($table_schema['changed fields'])) {
+      foreach ($table_schema['changed fields'] as $args) {
+        db_change_field($ret, $table, $args['field'], $args['field_new'], $args['spec']);
       }
     }
 
@@ -478,39 +451,88 @@ function workflow_update_6102() {
     }
   }
 
-  // Now that we have the fields we need, let's go populate them. First start 
-  // with the workflow_name field.
-  $result = db_query("SELECT * FROM {workflows}");
+  return $ret;
+}
+
+/**
+ * Set up machine names on existing workflows. We do this in a separate update
+ * so we can do them in batches of 100 via $sandbox.
+ */
+function workflow_update_6201(&$sandbox = NULL) {
+  $ret = array();
+  $schema = _workflow_update_6200_schema();
+
+  // We use $sandbox here to do these in batches of 100.
+  if (!isset($sandbox['max_wid'])) {
+    $sandbox['current_wid'] = 0;
+    $sandbox['max_wid'] = db_result(db_query('SELECT MAX(wid) FROM {workflows}'));
+  }
+
+  $result = db_query("SELECT * FROM {workflows} WHERE wid > %d ORDER BY wid ASC LIMIT 100", $sandbox['current_wid']);
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing workflows.
-    $name = _workflow_update_6102_name_gen($obj->label, $obj->wid);
+    $name = _workflow_update_6200_name_gen($obj->label, $obj->wid);
     $sql = "UPDATE {workflows} SET name = '%s' WHERE wid = %d";
-    $result = db_query($sql, $name, $obj->wid);
-    $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
+    $success = db_query($sql, $name, $obj->wid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
 
     // Update the workflow type map with the new workflow name.
     $sql = "UPDATE {workflow_type_map} SET workflow_name = '%s' WHERE wid = %d";
-    $result = db_query($sql, $name, $obj->wid);
-    $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
+    $success = db_query($sql, $name, $obj->wid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
 
     // Update the workflow states with the new workflow name.
     $sql = "UPDATE {workflow_states} SET workflow_name = '%s' WHERE wid = %d";
-    $result = db_query($sql, $name, $obj->wid);
-    $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
+    $success = db_query($sql, $name, $obj->wid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+
+    $sandbox['current_wid'] = $obj->wid;
   }
 
-  // Create a new machine name for existing workflow_states.
-  $result = db_query("SELECT * FROM {workflow_states}");
+  $ret['#finished'] = empty($sandbox['max_wid']) ? 1 : ($sandbox['current_wid'] / $sandbox['max_wid']);
+
+  return $ret;
+}
+
+/**
+ * Set up machine names on existing workflows states. Again, in a separate update
+ * so we can do them in batches of 100 via $sandbox.
+ */
+function workflow_update_6202(&$sandbox = NULL) {
+  $ret = array();
+  $schema = _workflow_update_6200_schema();
+
+  // We use $sandbox here to do these in batches of 100.
+  if (!isset($sandbox['max_sid'])) {
+    $sandbox['current_sid'] = 0;
+    $sandbox['max_sid'] = db_result(db_query('SELECT MAX(sid) FROM {workflow_states}'));
+  }
+
+  $result = db_query("SELECT * FROM {workflow_states} WHERE sid > %d ORDER BY sid ASC LIMIT 100", $sandbox['current_sid']);
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing states.
-    $name = _workflow_update_6102_name_gen($obj->state, $obj->sid);
+    $name = _workflow_update_6200_name_gen($obj->label, $obj->sid);
     $sql = "UPDATE {workflow_states} SET name = '%s' WHERE sid = %d";
-    $result = db_query($sql, $name, $obj->sid);
-    $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+
+    $sandbox['current_sid'] = $obj->sid;
   }
 
-  // Now that that's done, add/delete unique keys and indexes where necessary, 
-  // and drop old fields.
+  $ret['#finished'] = empty($sandbox['max_sid']) ? 1 : ($sandbox['current_sid'] / $sandbox['max_sid']);
+
+  return $ret;
+}
+
+/**
+ * Add/delete unique keys/indexes and drop old fields where necessary based on 
+ * the new 6200 schema.
+ */
+function workflow_update_6203() {
+  $ret = array();
+  $schema = _workflow_update_6200_schema();
+
+  // Now that that's done, 
   foreach ($schema as $table => $table_schema) {
     if (!empty($table_schema['deleted indexes'])) {
       // Delete old indexes.
@@ -542,11 +564,62 @@ function workflow_update_6102() {
 }
 
 /**
+ * Helper function to set up the 6200 schema changes in an array.
+ */
+function _workflow_update_6200_schema() {
+  // Set up the schema changes in an array.
+  // Every name field is the same.
+  $name_field = array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '');
+  $schema = array();
+  $schema['workflows'] = array(
+    'changed fields' => array(
+      'name' => array(
+        'field' => 'name',
+        'field_new' => 'label',
+        'spec' => $name_field,
+      ),
+    ),
+    'fields' => array('name' => $name_field + array('sql')),
+    'unique keys' => array('name' => array('name')),
+  );
+  $schema['workflow_type_map'] = array(
+    'fields' => array('workflow_name' => $name_field),
+    'deleted fields' => array('wid'),
+    'indexes' => array(
+      'type' => array('type'),
+      'workflow_name' => array('workflow_name'),
+    ),
+    'deleted indexes' => array('type'),
+  );
+  $schema['workflow_states'] = array(
+    'changed fields' => array(
+      'state' => array(
+        'field' => 'state',
+        'field_new' => 'label',
+        'spec' => $name_field,
+      ),
+    ),
+    'fields' => array(
+      'name' => $name_field,
+      'workflow_name' => $name_field,
+    ),
+    'unique keys' => array('name' => array('name')),
+    'deleted fields' => array('wid'),
+    'indexes' => array('workflow_name' => array('workflow_name')),
+    'deleted indexes' => array('wid'),
+  );
+
+  return $schema;
+}
+
+/**
  * Turn a ascii string into a machine name.
  */
-function _workflow_update_6102_name_gen($string, $id) {
+function _workflow_update_6200_name_gen($string, $id) {
   // First let's make it lowercase.
   $output = strtolower($string);
+  // Convert spaces to underscores.
+  $output = str_replace(' ', '_', $output);
   // Then filter out any silly characters.
   $output = preg_replace("/[^[:alnum:]_]/", '', $output);
 
@@ -554,7 +627,7 @@ function _workflow_update_6102_name_gen($string, $id) {
   $length = strlen($output) + strlen($id) + 1;
 
   // Trim the name down if necessary. This is a HIGHLY unlikely occurence.
-  $output = _workflow_update_6102_name_trim($output, $length - 255);
+  $output = _workflow_update_6200_name_trim($output, $length - 255);
 
   return $output .'_'. $id;
 }
@@ -562,7 +635,7 @@ function _workflow_update_6102_name_gen($string, $id) {
 /**
  * If necessary, trim a string down to 255 characters.
  */
-function _workflow_update_6102_name_trim($string, $num) {
+function _workflow_update_6200_name_trim($string, $num) {
   // Only trim if $num is positive.
   if ($num > 0) {
     $new_length = strlen($string) - $num;
