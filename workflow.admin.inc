@@ -605,7 +605,7 @@ function workflow_overview() {
  *   Confirmation form array.
  */
 function workflow_state_delete_form($form_state, $workflow_name, $name) {
-  $states = $form['#states'] = workflow_get_state_names($workflow_name);
+  $states = $form['#states'] = workflow_get_state_labels($workflow_name);
   $label = $states[$name];
 
   // Don't allow users to delete a system state.

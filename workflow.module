@@ -1161,7 +1161,7 @@ function workflow_get_states($machine_name = NULL, $column = 'name') {
  * @return
  *   An array of workflow states.
  */
-function workflow_get_state_names($workflow_name = NULL, $column = 'name') {
+function workflow_get_state_labels($workflow_name = NULL, $column = 'name') {
   $states = workflow_get_states($workflow_name, $column);
 
   foreach ($states as $key => $state) {
