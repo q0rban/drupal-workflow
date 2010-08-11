@@ -56,7 +56,7 @@ function workflow_add_form_validate($form, &$form_state) {
       array('%name' => $values['name'])));
   }
   // Make sure the workflow name isn't associated with disabled states.
-  if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE workflow_name = '%s'", $values['name']))) {
+  if (db_result(db_query("SELECT COUNT(*) FROM {workflow_states} WHERE workflow_name = '%s'", $values['name']))) {
     form_set_error('name', t('It appears this machine name has previously disabled states. Please enter another name for your new workflow.',
       array('%name' => $values['name'])));
   }
