@@ -484,7 +484,7 @@ function workflow_update_6102() {
   while ($obj = db_fetch_object($result)) {
     // First we'll create a new machine name for existing workflows.
     $name = _workflow_update_6102_name_gen($obj->label, $obj->wid);
-    $sql = "UPDATE {workflows} SET workflow_name = '%s' WHERE wid = %d";
+    $sql = "UPDATE {workflows} SET name = '%s' WHERE wid = %d";
     $result = db_query($sql, $name, $obj->wid);
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
 
@@ -502,9 +502,9 @@ function workflow_update_6102() {
   // Create a new machine name for existing workflow_states.
   $result = db_query("SELECT * FROM {workflow_states}");
   while ($obj = db_fetch_object($result)) {
-    // First we'll create a new machine name for existing workflows.
+    // First we'll create a new machine name for existing states.
     $name = _workflow_update_6102_name_gen($obj->state, $obj->sid);
-    $sql = "UPDATE {workflow_states} SET state_name = '%s' WHERE sid = %d";
+    $sql = "UPDATE {workflow_states} SET name = '%s' WHERE sid = %d";
     $result = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $result !== FALSE, 'query' => check_plain($sql));
   }
