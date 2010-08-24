@@ -281,7 +281,7 @@ function workflow_transition($node, $state_name) {
     else {
       // Schedule the the time to change the state.
       $comment = $node->workflow_comment;
-      $old_sid = workflow_node_current_state($node);
+      $old_state_name = workflow_node_current_state($node);
 
       if ($node->workflow_scheduled_date['day'] < 10) {
         $node->workflow_scheduled_date['day'] = '0' .
@@ -311,7 +311,7 @@ function workflow_transition($node, $state_name) {
 
         // Clear previous entries and insert.
         db_query("DELETE FROM {workflow_scheduled_transition} WHERE nid = %d", $node->nid);
-        db_query("INSERT INTO {workflow_scheduled_transition} VALUES (%d, %d, %d, %d, '%s')", $node->nid, $old_sid, $state_name, $scheduled, $comment);
+        db_query("INSERT INTO {workflow_scheduled_transition} (nid, old_state_name, state_name, scheduled, comment) VALUES (%d, '%s', '%s', %d, '%s')", $node->nid, $old_state_name, $state_name, $scheduled, $comment);
 
         $t_args = array(
           '@node_title' => $node->title,
