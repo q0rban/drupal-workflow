@@ -632,8 +632,12 @@ function workflow_select_next_state_action($node, $context) {
  * Implementation of a Drupal action. Move a node to a specified state.
  */
 function workflow_select_given_state_action($node, $context) {
-  $comment = t($context['workflow_comment'], array('%title' => check_plain($node->title), '%state' => check_plain($context['state_name'])));
-  workflow_execute_transition($node, $context['target_sid'], $comment, $context['force']);
+  $t_args = array(
+    '%title' => check_plain($node->title),
+    '%state' => check_plain($context['label']),
+  );
+  $comment = t($context['workflow_comment'], $t_args);
+  workflow_execute_transition($node, $context['target_state_name'], $comment, $context['force']);
 }
 
 /**
@@ -642,13 +646,18 @@ function workflow_select_given_state_action($node, $context) {
  * @see workflow_select_given_state_action()
  */
 function workflow_select_given_state_action_form($context) {
-  $result = db_query("SELECT * FROM {workflow_states} ws LEFT JOIN {workflows} w ON ws.workflow_name = w.name WHERE ws.sysid = 0 AND ws.status = 1 ORDER BY ws.workflow_name, ws.weight");
+  $result = db_query("SELECT w.label AS workflow_label, ws.name AS state_name, ws.label AS state_label "
+    . "FROM {workflow_states} ws "
+    . "LEFT JOIN {workflows} w ON ws.workflow_name = w.name "
+    . "WHERE ws.sysid = 0 AND ws.status = 1 "
+    . "ORDER BY ws.workflow_name, ws.weight");
   $previous_workflow = '';
   $options = array();
   while ($data = db_fetch_object($result)) {
-    $options[$data->workflow_name][$data->name] = $data->state;
+    $workflow_label = check_plain(t($data->workflow_label));
+    $options[$workflow_label][$data->state_name] = check_plain(t($data->state_label));;
   }
-  $form['target_state'] = array(
+  $form['target_state_name'] = array(
     '#type' => 'select',
     '#title' => t('Target state'),
     '#description' => t('Please select that state that should be assigned when this action runs.'),
@@ -677,9 +686,9 @@ function workflow_select_given_state_action_form($context) {
  * @see workflow_select_given_state_action_form()
  */
 function workflow_select_given_state_action_submit($form_id, $form_state) {
-  $state_name = workflow_get_state_name($form_state['values']['target_state']);
+  $state_name = workflow_get_state_name($form_state['values']['target_state_name']);
   return array(
-    'target_state' => $form_state['values']['target_state'],
+    'target_state_name' => $form_state['values']['target_state_name'],
     'label' => $state_name,
     'force' => $form_state['values']['force'],
     'workflow_comment' => $form_state['values']['workflow_comment'],
@@ -880,9 +889,9 @@ function workflow_update_transitions($transitions = array()) {
  * Add the transition if necessary.
  *
  * @param $from
- *   The machine name of the state transitioned from.
+ *   The machine name of the originating state.
  * @param $to
- *   The machine name of the state transitioned to.
+ *   The machine name of the target state.
  * @param mixed $role
  *   Int (role ID) or string ('author').
  */
@@ -912,9 +921,9 @@ function workflow_transition_add_role($from, $to, $role) {
  * Remove a role from the list of those allowed for a given transition.
  *
  * @param $from
- *   The machine name of the state transitioned from.
+ *   The machine name of the originating state.
  * @param $to
- *   The machine name of the state transitioned to.
+ *   The machine name of the target state.
  * @param mixed $role
  *   Int (role ID) or string ('author').
  */
@@ -1402,15 +1411,15 @@ function workflow_get_actions($tid) {
 /**
  * Get the tid of a transition, if it exists.
  *
- * @param int $from
- *   ID (sid) of originating state.
- * @param int $to
- *   ID (sid) of target state.
+ * @param $from
+ *   The machine name of the originating state.
+ * @param $to
+ *   The machine name of the target state.
  * @return int
  *   Tid or FALSE if no such transition exists.
  */
 function workflow_get_transition_id($from, $to) {
-  return db_result(db_query("SELECT tid FROM {workflow_transitions} WHERE sid= %d AND target_sid= %d", $from, $to));
+  return db_result(db_query("SELECT tid FROM {workflow_transitions} WHERE state_name = '%s' AND target_state_name = '%s'", $from, $to));
 }
 
 /**
@@ -1541,19 +1550,36 @@ function workflow_action_info_alter(&$info) {
  * Expose each transition as a hook.
  */
 function workflow_hook_info() {
-  $states = workflow_get_states(NULL, 'sid');
+  $states = workflow_get_states();
   if (!$states) {
     return;
   }
+
   $trigger_page = substr($_GET['q'], 0, 28) == 'admin/build/trigger/workflow';
-  if ($trigger_page && $wid = arg(4)) {
-    $result = db_query("SELECT tm.type, w.wid, w.name, ws.state, wt.tid, wt.sid, wt.target_sid FROM {workflow_type_map} tm LEFT JOIN {workflows} w ON tm.wid = w.wid LEFT JOIN {workflow_states} ws ON w.wid = ws.wid LEFT JOIN {workflow_transitions} wt ON ws.sid = wt.sid WHERE w.wid = %d AND wt.target_sid IS NOT NULL ORDER BY tm.type, ws.weight", $wid);
+  if ($trigger_page && $workflow_name = arg(4)) {
+    $result = db_query("SELECT tm.type, w.name, w.label, wt.tid, wt.state_name, wt.target_state_name "
+      . "FROM {workflow_type_map} tm "
+      . "LEFT JOIN {workflows} w ON tm.workflow_name = w.name "
+      . "LEFT JOIN {workflow_states} ws ON w.name = ws.workflow_name "
+      . "LEFT JOIN {workflow_transitions} wt ON ws.name = wt.state_name "
+      . "WHERE w.name = '%s' AND wt.target_state_name IS NOT NULL "
+      . "ORDER BY tm.type, ws.weight", $workflow_name);
   }
   else {
-    $result = db_query("SELECT tm.type, w.wid, w.name, ws.state, wt.tid, wt.sid, wt.target_sid FROM {workflow_type_map} tm LEFT JOIN {workflows} w ON tm.wid = w.wid LEFT JOIN {workflow_states} ws ON w.wid = ws.wid LEFT JOIN {workflow_transitions} wt ON ws.sid = wt.sid WHERE wt.target_sid IS NOT NULL ORDER BY tm.type, ws.weight");
+    $result = db_query("SELECT tm.type, w.name, w.label, wt.tid, wt.state_name, wt.target_state_name "
+      . "FROM {workflow_type_map} tm "
+      . "LEFT JOIN {workflows} w ON tm.workflow_name = w.name "
+      . "LEFT JOIN {workflow_states} ws ON w.name = ws.workflow_name "
+      . "LEFT JOIN {workflow_transitions} wt ON ws.name = wt.state_name "
+      . "WHERE wt.target_state_name IS NOT NULL "
+      . "ORDER BY tm.type, ws.weight");
   }
   while ($data = db_fetch_object($result)) {
-    $pseudohooks['workflow-'. $data->type .'-'. $data->tid] = array('runs when' => t('When %type moves from %state to %target_state', array('%type' => $data->type, '%state' => $states[$data->sid], '%target_state' => $states[$data->target_sid])));
+    $state = $states[$data->state_name];
+    $target_state = $states[$data->target_state_name];
+    $t_args = array('%type' => $data->type, '%state' => $state->label, '%target_state' => $target_state->label);
+    $hook_key = 'workflow-'. $data->type .'-'. $data->tid;
+    $pseudohooks[$hook_key] = array('runs when' => t('When %type moves from %state to %target_state', $t_args));
   }
   // $pseudohooks will not be set if no workflows have been assigned
   // to node types.
