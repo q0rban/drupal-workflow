@@ -71,8 +71,8 @@ function workflow_schema() {
   $schema['workflow_scheduled_transition'] = array(
     'fields' => array(
       'nid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'old_sid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'sid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'old_state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'state_name'     => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'scheduled' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
       'comment'   => array('type' => 'text', 'size' => 'big', 'not null' => FALSE)),
     'indexes' => array(
@@ -94,12 +94,12 @@ function workflow_schema() {
   $schema['workflow_node'] = array(
     'fields' => array(
       'nid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'sid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'state_name'     => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'uid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
       'stamp' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11')),
     'primary key' => array('nid'),
     'indexes' => array(
-      'nid' => array('nid', 'sid')),
+      'nid' => array('nid', 'state_name')),
   );
 
   return $schema;
@@ -510,7 +510,7 @@ function workflow_update_6202(&$sandbox = NULL) {
 
   $result = db_query("SELECT * FROM {workflow_states} WHERE sid > %d ORDER BY sid ASC LIMIT 100", $sandbox['current_sid']);
   while ($obj = db_fetch_object($result)) {
-    // First we'll create a new machine name for existing states.
+    // Create a new machine name for existing states.
     $name = _workflow_update_6200_name_gen($obj->label, $obj->sid);
     $sql = "UPDATE {workflow_states} SET name = '%s' WHERE sid = %d";
     $success = db_query($sql, $name, $obj->sid);
@@ -526,6 +526,16 @@ function workflow_update_6202(&$sandbox = NULL) {
     $success = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
 
+    // Update the workflow_scheduled_transition table. There are two columns to update: 
+    // old_state_name, and state_name.
+    $sql = "UPDATE {workflow_scheduled_transition} SET state_name = '%s' WHERE sid = %d";
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+    // target_sid to target_state_name
+    $sql = "UPDATE {workflow_scheduled_transition} SET old_state_name = '%s' WHERE old_sid = %d";
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+
     // Update the workflow_node_history table. There are two columns to update: 
     // old_state_name, and state_name.
     $sql = "UPDATE {workflow_node_history} SET state_name = '%s' WHERE sid = %d";
@@ -533,6 +543,11 @@ function workflow_update_6202(&$sandbox = NULL) {
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
     // target_sid to target_state_name
     $sql = "UPDATE {workflow_node_history} SET old_state_name = '%s' WHERE old_sid = %d";
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+
+    // Update the workflow_node table with a state_name.
+    $sql = "UPDATE {workflow_node} SET state_name = '%s' WHERE sid = %d";
     $success = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
 
@@ -640,6 +655,13 @@ function _workflow_update_6200_schema() {
     'indexes' => array('workflow_name' => array('workflow_name')),
     'deleted indexes' => array('wid'),
   );
+  $schema['workflow_scheduled_transition'] = array(
+    'fields' => array(
+      'old_state_name' => $name_field,
+      'state_name' => $name_field,
+    ),
+    'deleted fields' => array('sid', 'old_sid'),
+  );
   $schema['workflow_node_history'] = array(
     'fields' => array(
       'old_state_name' => $name_field,
@@ -650,6 +672,16 @@ function _workflow_update_6200_schema() {
       'state_name' => array('state_name'),
     ),
     'deleted indexes' => array('sid'),
+  );
+  $schema['workflow_node'] = array(
+    'fields' => array(
+      'state_name' => $name_field,
+    ),
+    'deleted fields' => array('sid'),
+    'indexes' => array(
+      'nid' => array('nid', 'state_name'),
+    ),
+    'deleted indexes' => array('nid'),
   );
 
   return $schema;

@@ -614,7 +614,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
   }
 
   // Will any nodes have no state if this state is deleted?
-  if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE sid = %d", $state->sid))) {
+  if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE state_name = '%s'", $name))) {
     // Cannot assign a node to (creation) because that implies
     // that the node does not exist.
     foreach ($states as $key => $value) {
