@@ -44,14 +44,14 @@ function workflow_schema() {
   );
   $schema['workflow_transitions'] = array(
     'fields' => array(
-      'tid'        => array('type' => 'serial', 'not null' => TRUE),
-      'sid'        => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'target_sid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'roles'      => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
-    'primary key' => array('tid'),
+      'tid'               => array('type' => 'serial', 'not null' => TRUE),
+      'state_name'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'target_state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'roles'             => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'primary key'         => array('tid'),
     'indexes' => array(
-      'sid' => array('sid'),
-      'target_sid' => array('target_sid')),
+      'state_name'        => array('state_name'),
+      'target_state_name' => array('target_state_name')),
   );
   $schema['workflow_states'] = array(
     'fields' => array(
@@ -516,6 +516,16 @@ function workflow_update_6202(&$sandbox = NULL) {
     $success = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
 
+    // Now update the workflow_transitions table. There are two columns to
+    // update: state_name, and target_state_name.
+    $sql = "UPDATE {workflow_transitions} SET state_name = '%s' WHERE sid = %d";
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+    // target_sid to target_state_name
+    $sql = "UPDATE {workflow_transitions} SET target_state_name = '%s' WHERE target_sid = %d";
+    $success = db_query($sql, $name, $obj->sid);
+    $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
+
     $sandbox['current_sid'] = $obj->sid;
   }
 
@@ -590,6 +600,18 @@ function _workflow_update_6200_schema() {
       'workflow_name' => array('workflow_name'),
     ),
     'deleted indexes' => array('type'),
+  );
+  $schema['workflow_transitions'] = array(
+    'fields' => array(
+      'state_name' => $name_field,
+      'target_state_name' => $name_field,
+    ),
+    'deleted fields' => array('sid', 'target_sid'),
+    'indexes' => array(
+      'state_name'        => array('state_name'),
+      'target_state_name' => array('target_state_name')
+    ),
+    'deleted indexes' => array('sid', 'target_sid'),
   );
   $schema['workflow_states'] = array(
     'changed fields' => array(
