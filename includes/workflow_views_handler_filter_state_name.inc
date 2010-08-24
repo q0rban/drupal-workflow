@@ -9,14 +9,14 @@
 /**
  * Filter by state.
  */
-class workflow_views_handler_filter_sid extends views_handler_filter_in_operator {
+class workflow_views_handler_filter_state_name extends views_handler_filter_in_operator {
   var $value_form_type = 'select';
 
   function get_value_options() {
     if (!isset($this->value_options)) {
       $this->value_title = t('Workflow state');
 
-      $this->value_options = workflow_get_state_labels(NULL, 'sid');;
+      $this->value_options = workflow_get_state_labels();;
     }
   }
 

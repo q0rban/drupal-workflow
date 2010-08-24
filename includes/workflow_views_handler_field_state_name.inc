@@ -9,7 +9,7 @@
 /**
  * Field handler to provide simple renderer that allows linking to a node.
  */
-class workflow_views_handler_field_sid extends views_handler_field {
+class workflow_views_handler_field_state_name extends views_handler_field {
   function render($values) {
     if (empty($values->{$this->field_alias})) {
       return t('No state');
@@ -17,7 +17,7 @@ class workflow_views_handler_field_sid extends views_handler_field {
 
     static $states;
     if (!isset($states)) {
-      $states = workflow_get_states(NULL, 'sid');
+      $states = workflow_get_states();
     }
     $output = $states[$values->{$this->field_alias}];
     if (empty($output)) {

@@ -21,9 +21,9 @@ function workflow_views_data() {
   // Explain how this table joins to others.
   $data['workflow_states']['table']['join'] = array(
     'node' => array(
-      'field' => 'sid',
+      'field' => 'name',
       'left_table' => 'workflow_node',
-      'left_field' => 'sid',
+      'left_field' => 'state_name',
     ),
   );
 
@@ -57,11 +57,11 @@ function workflow_views_data() {
   );
 
   // state
-  $data['workflow_node']['sid'] = array(
+  $data['workflow_node']['state_name'] = array(
     'title' => t('Current state'), // Appears in views UI.
     'help' => t('The current workflow state that the node is in.'),
     'field' => array(
-      'handler' => 'workflow_views_handler_field_sid',
+      'handler' => 'workflow_views_handler_field_state_name',
       'click sortable' => TRUE,
      ),
     'argument' => array(
@@ -70,7 +70,7 @@ function workflow_views_data() {
       'numeric' => TRUE,
     ),
     'filter' => array(
-      'handler' => 'workflow_views_handler_filter_sid',
+      'handler' => 'workflow_views_handler_filter_state_name',
       'numeric' => TRUE,
     ),
   );
@@ -86,15 +86,15 @@ function workflow_views_data() {
   );
 
   // state
-  $data['workflow_scheduled_transition']['sid'] = array(
+  $data['workflow_scheduled_transition']['state_name'] = array(
     'title' => t('Scheduled state'), // Appears in views UI.
     'help' => t('The current workflow state that the node is in.'),
     'field' => array(
-      'handler' => 'workflow_views_handler_field_sid',
+      'handler' => 'workflow_views_handler_field_state_name',
       'click sortable' => TRUE,
      ),
     'filter' => array(
-      'handler' => 'workflow_views_handler_filter_sid',
+      'handler' => 'workflow_views_handler_filter_state_name',
       'numeric' => TRUE,
     ),
   );
@@ -141,16 +141,15 @@ function workflow_views_data() {
   );
 
   // state
-  $data['workflow_node_history']['sid'] = array(
+  $data['workflow_node_history']['old_state_name'] = array(
     'title' => t('Previous state'), // Appears in views UI.
     'help' => t('A workflow state that the node was in previously.'),
     'field' => array(
-      'handler' => 'workflow_views_handler_field_sid',
+      'handler' => 'workflow_views_handler_field_state_name',
       'click sortable' => TRUE,
      ),
     'filter' => array(
-      'handler' => 'workflow_views_handler_filter_sid',
-      'numeric' => TRUE,
+      'handler' => 'workflow_views_handler_filter_state_name',
     ),
   );
 
@@ -206,11 +205,11 @@ function workflow_views_handlers() {
         'parent' => 'views_handler_argument_node_type',
       ),
       // field handlers
-      'workflow_views_handler_field_sid' => array(
+      'workflow_views_handler_field_state_name' => array(
         'parent' => 'views_handler_field_node',
       ),
       // filter handlers
-      'workflow_views_handler_filter_sid' => array(
+      'workflow_views_handler_filter_state_name' => array(
         'parent' => 'views_handler_filter_in_operator',
       ),
       // relationship handlers
