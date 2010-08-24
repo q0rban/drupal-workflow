@@ -136,17 +136,17 @@ function workflow_permissions($name) {
     $all[$role]['name'] = $value;
   }
   $result = db_query(
-    'SELECT t.roles, s1.label AS state_name, s2.label AS target_state_name ' .
+    'SELECT t.roles, s1.label AS state_label, s2.label AS target_state_label ' .
     'FROM {workflow_transitions} t ' .
-    'INNER JOIN {workflow_states} s1 ON s1.sid = t.sid '.
-    'INNER JOIN {workflow_states} s2 ON s2.sid = t.target_sid '.
+    'INNER JOIN {workflow_states} s1 ON s1.name = t.state_name '.
+    'INNER JOIN {workflow_states} s2 ON s2.name = t.target_state_name '.
     "WHERE s1.workflow_name = '%s' " .
     'ORDER BY s1.weight ASC , s1.label ASC , s2.weight ASC , s2.label ASC',
     $name);
 
   while ($data = db_fetch_object($result)) {
     foreach (explode(',', $data->roles) as $role) {
-      $all[$role]['transitions'][] = array(check_plain(t($data->state_name)), WORKFLOW_ARROW, check_plain(t($data->target_state_name)));
+      $all[$role]['transitions'][] = array(check_plain(t($data->state_label)), WORKFLOW_ARROW, check_plain(t($data->target_state_label)));
     }
   }
 

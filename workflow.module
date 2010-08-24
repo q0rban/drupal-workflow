@@ -879,15 +879,17 @@ function workflow_update_transitions($transitions = array()) {
  *
  * Add the transition if necessary.
  *
- * @param int $from
- * @param int $to
+ * @param $from
+ *   The machine name of the state transitioned from.
+ * @param $to
+ *   The machine name of the state transitioned to.
  * @param mixed $role
  *   Int (role ID) or string ('author').
  */
 function workflow_transition_add_role($from, $to, $role) {
   $transition = array(
-    'sid' => $from,
-    'target_sid' => $to,
+    'state_name' => $from,
+    'target_state_name' => $to,
     'roles' => $role,
   );
   $tid = workflow_get_transition_id($from, $to);
@@ -909,7 +911,10 @@ function workflow_transition_add_role($from, $to, $role) {
 /**
  * Remove a role from the list of those allowed for a given transition.
  *
- * @param int $tid
+ * @param $from
+ *   The machine name of the state transitioned from.
+ * @param $to
+ *   The machine name of the state transitioned to.
  * @param mixed $role
  *   Int (role ID) or string ('author').
  */
@@ -1260,22 +1265,13 @@ function workflow_state_delete($name, $new_name = NULL) {
     db_query('DELETE from {workflow_node} WHERE sid = %d', $state->sid);
   }
 
-  // Find out which transitions this state is involved in.
-  $preexisting = array();
-  $result = db_query("SELECT sid, target_sid FROM {workflow_transitions} WHERE sid = %d OR target_sid = %d", $state->sid, $state->sid);
+  // Delete all associated transitions this state is involved in.
+  $result = db_query("SELECT tid FROM {workflow_transitions} WHERE state_name = '%s' OR target_state_name = '%s'", $state->name, $state->name);
   while ($data = db_fetch_object($result)) {
-    $preexisting[$data->sid][$data->target_sid] = TRUE;
+    workflow_transition_delete($data->tid);
   }
 
-  // Delete the transitions and associated actions, if any.
-  foreach ($preexisting as $from => $array) {
-    foreach (array_keys($array) as $target_id) {
-      $tid = workflow_get_transition_id($from, $target_id);
-      workflow_transition_delete($tid);
-    }
-  }
-
-  // Delete the state.
+  // Disable the state.
   db_query("UPDATE {workflow_states} SET status = 0 WHERE sid = %d", $state->sid);
   // Notify interested modules.
   module_invoke_all('workflow', 'state delete', $state->sid, NULL, NULL);
@@ -1301,13 +1297,13 @@ function workflow_transition_delete($tid) {
  * Get allowable transitions for a given workflow state. Typical use:
  *
  * global $user;
- * $possible = workflow_allowable_transitions($sid, 'to', $user->roles);
+ * $possible = workflow_allowable_transitions($state_name, 'to', $user->roles);
  *
- * If the state ID corresponded to the state named "Draft", $possible now
+ * If the state name corresponded to the state named "Draft", $possible now
  * contains the states that the current user may move to from the Draft state.
  *
- * @param $sid
- *   The ID of the state in question.
+ * @param $state_name
+ *   The machine name of the state in question.
  * @param $dir
  *   The direction of the transition: 'to' or 'from' the state denoted by $sid.
  *   When set to 'to' all the allowable states that may be moved to are
@@ -1321,35 +1317,35 @@ function workflow_transition_delete($tid) {
  * @return
  *   Associative array of states ($sid => $state_name pairs), excluding current state.
  */
-function workflow_allowable_transitions($sid, $dir = 'to', $roles = 'ALL') {
+function workflow_allowable_transitions($state_name, $dir = 'to', $roles = 'ALL') {
   $transitions = array();
 
   if ($dir == 'to') {
-    $field = 'target_sid';
-    $field_where = 'sid';
+    $field = 'target_state_name';
+    $field_where = 'state_name';
   }
   else {
-    $field = 'sid';
-    $field_where = 'target_sid';
+    $field = 'state_name';
+    $field_where = 'target_state_name';
   }
 
   $result = db_query(
-    "(SELECT t.tid, t.%s as state_id, s.state AS state_name, s.weight AS state_weight "
+    "(SELECT t.tid, t.%s as state_name, s.label AS state_label, s.weight AS state_weight "
     . "FROM {workflow_transitions} t "
     . "INNER JOIN {workflow_states} s "
-    . "ON s.sid = t.%s "
-    . "WHERE t.%s = %d AND s.status = 1 "
+    . "ON s.name = t.%s "
+    . "WHERE t.%s = '%s' AND s.status = 1 "
     . "ORDER BY state_weight) "
     . "UNION "
-    . "(SELECT s.sid as tid, s.sid as state_id, s.state as state_name, s.weight as state_weight "
+    . "(SELECT s.sid as tid, s.name as state_name, s.label as state_label, s.weight as state_weight "
     . "FROM {workflow_states} s "
-    . "WHERE s.sid = %d AND s.status = 1) "
-    . "ORDER BY state_weight, state_id", $field, $field, $field_where, $sid, $sid);
+    . "WHERE s.name = '%s' AND s.status = 1) "
+    . "ORDER BY state_weight, state_name", $field, $field, $field_where, $state_name, $state_name);
   while ($t = db_fetch_object($result)) {
     if ($roles == 'ALL'  // Superuser.
-      || $sid == $t->state_id // Include current state for same-state transitions.
+      || $state_name == $t->state_name // Include current state for same-state transitions.
       || workflow_transition_allowed($t->tid, $roles)) {
-      $transitions[$t->state_id] = check_plain(t($t->state_name));
+      $transitions[$t->state_name] = check_plain(t($t->state_label));
     }
   }
 
