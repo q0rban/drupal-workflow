@@ -29,7 +29,7 @@ function workflow_access_schema() {
     ),
     'indexes' => array(
       'rid'   => array('rid'),
-      'sid'   => array('sid'),
+      'state_name'   => array('state_name'),
     ),
   );
   return $schema;
@@ -41,6 +41,10 @@ function workflow_access_schema() {
 function workflow_access_update_6200() {
   $ret = array();
   $schema = _workflow_access_update_6200_schema();
+
+  // sid was mistakenly set up as a serial column, so we need to convert to an integer first.
+  $spec = array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0);
+  db_change_field($ret, 'workflow_access', 'sid', 'sid', $spec);
 
   // This function resides in workflow.install
   drupal_load('install', 'workflow');

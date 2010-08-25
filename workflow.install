@@ -441,8 +441,8 @@ function workflow_update_6200() {
 }
 
 /**
- * Helper function to the 6200 update. workflow_access needs this function as well,
- * so it stands alone from the update function.
+ * Helper function to the 6200 update. workflow_access needs this functionality 
+ * as well, so it stands alone from the update function.
  */
 function _workflow_update_6200(&$ret, $schema) {
   // Rename existing fields and add new ones as needed.
@@ -581,8 +581,8 @@ function workflow_update_6203() {
 }
 
 /**
- * Helper function to the 6203 update. workflow_access needs this function as well,
- * so it stands alone from the update function.
+ * Helper function to the 6203 update. workflow_access needs this functionality 
+ * as well, so it stands alone from the update function.
  */
 function _workflow_update_6203(&$ret, $schema) {
   // Now that that's done, 
