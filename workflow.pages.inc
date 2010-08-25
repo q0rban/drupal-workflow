@@ -13,14 +13,14 @@ function workflow_tab_page($node = NULL) {
   drupal_set_title(check_plain($node->title));
   $machine_name = workflow_get_workflow_for_type($node->type);
   $states_per_page = variable_get('workflow_states_per_page', 20);
-  $result = db_query("SELECT sid, state FROM {workflow_states} WHERE status = 1 ORDER BY sid");
+  $result = db_query("SELECT sid, label FROM {workflow_states} WHERE status = 1 ORDER BY sid");
   while ($data = db_fetch_object($result)) {
-    $states[$data->sid] = check_plain(t($data->state));
+    $states[$data->sid] = check_plain(t($data->label));
   }
   $deleted_states = array();
-  $result = db_query("SELECT sid, state FROM {workflow_states} WHERE status = 0 ORDER BY sid");
+  $result = db_query("SELECT sid, label FROM {workflow_states} WHERE status = 0 ORDER BY sid");
   while ($data = db_fetch_object($result)) {
-    $deleted_states[$data->sid] = check_plain(t($data->state));
+    $deleted_states[$data->sid] = check_plain(t($data->label));
   }
   $current = workflow_node_current_state($node);
 
