@@ -69,7 +69,7 @@ function workflow_access_update_6202(&$sandbox = NULL) {
   }
 
   $result = db_query("SELECT * FROM {workflow_states} WHERE sid > %d ORDER BY sid ASC LIMIT 100", $sandbox['current_sid']);
-  while ($obj = db_result($result)) {
+  while ($obj = db_fetch_object($result)) {
     $sql = "UPDATE {workflow_access} SET state_name = '%s' WHERE sid = %d";
     $success = db_query($sql, $obj->name, $obj->sid);
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
