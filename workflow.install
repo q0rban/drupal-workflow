@@ -36,10 +36,10 @@ function workflow_schema() {
   );
   $schema['workflow_type_map'] = array(
     'fields' => array(
-      'type' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'type'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '')),
     'indexes' => array(
-      'type' => array('type'),
+      'type'          => array('type'),
       'workflow_name' => array('workflow_name')),
   );
   $schema['workflow_transitions'] = array(
@@ -70,11 +70,11 @@ function workflow_schema() {
   );
   $schema['workflow_scheduled_transition'] = array(
     'fields' => array(
-      'nid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'nid'            => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
       'old_state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'state_name'     => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'scheduled' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'comment'   => array('type' => 'text', 'size' => 'big', 'not null' => FALSE)),
+      'scheduled'      => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'comment'        => array('type' => 'text', 'size' => 'big', 'not null' => FALSE)),
     'indexes' => array(
       'nid' => array('nid')),
   );
@@ -93,13 +93,13 @@ function workflow_schema() {
   );
   $schema['workflow_node'] = array(
     'fields' => array(
-      'nid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'state_name'     => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'uid'   => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
-      'stamp' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11')),
-    'primary key' => array('nid'),
+      'nid'        => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'uid'        => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'stamp'      => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '11')),
+    'primary key'  => array('nid'),
     'indexes' => array(
-      'nid' => array('nid', 'state_name')),
+      'nid'        => array('nid', 'state_name')),
   );
 
   return $schema;
