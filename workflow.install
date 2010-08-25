@@ -685,9 +685,9 @@ function _workflow_update_6200_schema() {
     ),
     'deleted fields' => array('sid', 'old_sid'),
     'indexes' => array(
-      'state_name' => array('state_name'),
+      'nid' => array('nid', 'state_name'),
     ),
-    'deleted indexes' => array('sid'),
+    'deleted indexes' => array('nid'),
   );
   $schema['workflow_node'] = array(
     'fields' => array(

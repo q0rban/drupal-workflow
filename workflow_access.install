@@ -99,7 +99,7 @@ function workflow_access_update_6203() {
 /**
  * Helper function to set up the 6200 schema changes in an array.
  */
-function workflow_access_update_6200_schema() {
+function _workflow_access_update_6200_schema() {
   $schema['workflow_access'] = array(
     'fields' => array(
       'state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
