@@ -435,6 +435,16 @@ function workflow_update_6200() {
   $ret = array();
   $schema = _workflow_update_6200_schema();
 
+  _workflow_update_6200($ret, $schema);
+
+  return $ret;
+}
+
+/**
+ * Helper function to the 6200 update. workflow_access needs this function as well,
+ * so it stands alone from the update function.
+ */
+function _workflow_update_6200(&$ret, $schema) {
   // Rename existing fields and add new ones as needed.
   foreach ($schema as $table => $table_schema) {
     if (!empty($table_schema['changed fields'])) {
@@ -450,8 +460,6 @@ function workflow_update_6200() {
       }
     }
   }
-
-  return $ret;
 }
 
 /**
@@ -567,6 +575,16 @@ function workflow_update_6203() {
   $ret = array();
   $schema = _workflow_update_6200_schema();
 
+  _workflow_update_6203($ret, $schema);
+
+  return $ret;
+}
+
+/**
+ * Helper function to the 6203 update. workflow_access needs this function as well,
+ * so it stands alone from the update function.
+ */
+function _workflow_update_6203(&$ret, $schema) {
   // Now that that's done, 
   foreach ($schema as $table => $table_schema) {
     if (!empty($table_schema['deleted indexes'])) {
@@ -594,8 +612,6 @@ function workflow_update_6203() {
       }
     }
   }
-
-  return $ret;
 }
 
 /**
