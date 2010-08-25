@@ -201,17 +201,18 @@ function workflow_edit_form($form_state, $workflow) {
     '#size' => '16',
     '#maxlength' => '254',
   );
-  $form['comment'] = array(
+  $form['options'] = array(
     '#type' => 'fieldset',
     '#title' => t('Comment for Workflow Log'),
+    '#tree' => TRUE,
   );
-  $form['comment']['comment_log_node'] = array(
+  $form['options']['comment_log_node'] = array(
     '#type' => 'checkbox',
     '#title' => t('Show a comment field in the workflow section of the editing form.'),
     '#default_value' => $workflow->options['comment_log_node'],
     '#description' => t("On the node editing form, a Comment form can be shown so that the person making the state change can record reasons for doing so. The comment is then included in the node's workflow history."),
   );
-  $form['comment']['comment_log_tab'] = array(
+  $form['options']['comment_log_tab'] = array(
     '#type' => 'checkbox',
     '#title' => t('Show a comment field in the workflow section of the workflow tab form.'),
     '#default_value' => $workflow->options['comment_log_tab'],
@@ -258,27 +259,27 @@ function workflow_edit_form($form_state, $workflow) {
 function theme_workflow_edit_form($form) {
   $output = drupal_render($form['label']);
   $machine_name = $form['name']['#value'];
-  $states = workflow_get_states($machine_name, 'sid');
+  $states = workflow_get_states($machine_name);
   drupal_set_title(t('Edit workflow %label', array('%label' => workflow_get_label($machine_name))));
   if ($states) {
     $roles = workflow_get_roles();
     $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
     $rows = array();
-    foreach ($states as $state_id => $state) {
+    foreach ($states as $state_name => $state) {
       // Don't allow transition TO (creation).
       if (!workflow_is_system_state($state->label)) {
         $header[] = array('data' => $state->label);
       }
       $row = array(array('data' => $state->label));
-      foreach ($states as $nested_state_id => $nested_state) {
+      foreach ($states as $nested_state_name => $nested_state) {
         if (workflow_is_system_state($nested_state->label)) {
           // Don't allow transition TO (creation).
           continue;
         }
-        if ($nested_state_id != $state_id) {
+        if ($nested_state_name != $state_name) {
           // Need to render checkboxes for transition from $state to $nested_state.
-          $from = $state_id;
-          $to = $nested_state_id;
+          $from = $state_name;
+          $to = $nested_state_name;
           $cell = '';
           foreach ($roles as $rid => $role_name) {
             $cell .= drupal_render($form['transitions'][$from][$to][$rid]);
@@ -326,9 +327,9 @@ function workflow_edit_form_validate($form_id, $form_state) {
   }
 
   // Make sure 'author' is checked for (creation) -> [something].
-  $creation_id = _workflow_creation_state($machine_name);
-  if (isset($form_state['values']['transitions'][$creation_id]) && is_array($form_state['values']['transitions'][$creation_id])) {
-    foreach ($form_state['values']['transitions'][$creation_id] as $to => $roles) {
+  $creation_state = _workflow_creation_state($machine_name);
+  if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
+    foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
       if ($roles['author']) {
         $author_has_permission = TRUE;
         break;
@@ -351,7 +352,8 @@ function workflow_edit_form_submit($form, &$form_state) {
   if (isset($form_state['values']['transitions'])) {
     workflow_update_transitions($form_state['values']['transitions']);
   }
-  workflow_update($form_state['values']['wid'], $form_state['values']['label'], array_filter($form_state['values']['tab_roles']), array('comment_log_node' => $form_state['values']['comment_log_node'], 'comment_log_tab' => $form_state['values']['comment_log_tab']));
+
+  workflow_update($form_state['values']);
   drupal_set_message(t('The workflow was updated.'));
   $form_state['redirect'] = 'admin/build/workflow';
 }
@@ -490,7 +492,7 @@ function workflow_transition_grid_form($machine_name) {
   $form = array();
 
   $roles = workflow_get_roles();
-  $states = workflow_get_states($machine_name, 'sid');
+  $states = workflow_get_states($machine_name);
   if (!$states) {
     $form = array(
       '#type' => 'markup',
@@ -498,16 +500,16 @@ function workflow_transition_grid_form($machine_name) {
     );
     return $form;
   }
-  foreach ($states as $state_id => $state) {
-    foreach ($states as $nested_state_id => $nested_state) {
+  foreach ($states as $state_name => $state) {
+    foreach ($states as $nested_state_name => $nested_state) {
       if (workflow_is_system_state($nested_state->label)) {
         // Don't allow transition TO (creation).
         continue;
       }
-      if ($nested_state_id != $state_id) {
+      if ($nested_state_name != $state_name) {
         // Need to generate checkboxes for transition from $state to $nested_state.
-        $from = $state_id;
-        $to = $nested_state_id;
+        $from = $state_name;
+        $to = $nested_state_name;
         foreach ($roles as $rid => $role_name) {
           $tid = workflow_get_transition_id($from, $to);
           $form[$from][$to][$rid] = array(
@@ -570,7 +572,7 @@ function workflow_overview() {
         );
       }
       // Allow modules to insert state operations.
-      $state_links = array_merge($state_links, module_invoke_all('workflow_operations', 'state', $workflow->wid, $state->sid));
+      $state_links = array_merge($state_links, module_invoke_all('workflow_operations', 'state', $workflow->name, $state->name));
       $subrows[] = array($state->label, theme('links', $state_links));
       unset($state_links);
     }
@@ -599,14 +601,14 @@ function workflow_overview() {
  *
  * @param $workflow_name
  *   The machine name of the workflow.
- * @param $name
+ * @param $state_name
  *   The machine name of the state to delete.
  * @return
  *   Confirmation form array.
  */
-function workflow_state_delete_form($form_state, $workflow_name, $name) {
+function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
   $states = $form['#states'] = workflow_get_state_labels($workflow_name);
-  $label = $states[$name];
+  $label = $states[$state_name];
 
   // Don't allow users to delete a system state.
   if (workflow_is_system_state($label)) {
@@ -614,7 +616,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
   }
 
   // Will any nodes have no state if this state is deleted?
-  if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE state_name = '%s'", $name))) {
+  if ($count = db_result(db_query("SELECT COUNT(nid) FROM {workflow_node} WHERE state_name = '%s'", $state_name))) {
     // Cannot assign a node to (creation) because that implies
     // that the node does not exist.
     foreach ($states as $key => $value) {
@@ -625,7 +627,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
 
     // Don't include the state to be deleted in our list of possible
     // states that can be assigned.
-    unset($states[$name]);
+    unset($states[$state_name]);
     if ($states) {
       $form['new_state'] = array(
         '#type' => 'select',
@@ -647,7 +649,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
   );
   $form['name'] = array(
     '#type' => 'value',
-    '#value' => $name,
+    '#value' => $state_name,
   );
 
   return confirm_form(
@@ -667,11 +669,11 @@ function workflow_state_delete_form($form_state, $workflow_name, $name) {
  */
 function workflow_state_delete_form_submit($form, &$form_state) {
   $states = $form['#states'];
-  $name = $form_state['values']['name'];
-  $label = $states[$name];
+  $state_name = $form_state['values']['name'];
+  $label = $states[$state_name];
   if ($form_state['values']['confirm'] == 1) {
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
-    workflow_state_delete($name, $new_state);
+    workflow_state_delete($state_name, $new_state);
     watchdog('workflow', 'Deleted workflow state %label', array('%label' => $label));
     drupal_set_message(t('The workflow state %label was deleted.', array('%label' => $label)));
   }
@@ -722,7 +724,7 @@ function workflow_types_form() {
   }
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Save workflow mapping')
+    '#value' => t('Save workflow mapping'),
   );
   return $form;
 }

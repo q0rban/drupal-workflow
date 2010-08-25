@@ -206,7 +206,7 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // Add scheduling information.
       $res = db_query('SELECT * FROM {workflow_scheduled_transition} WHERE nid = %d', $node->nid);
       if ($row = db_fetch_object($res)) {
-        $node->_workflow_scheduled_sid = $row->sid;
+        $node->_workflow_scheduled_state_name = $row->state_name;
         $node->_workflow_scheduled_timestamp = $row->scheduled;
         $node->_workflow_scheduled_comment = $row->comment;
       }
@@ -219,7 +219,7 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       if (empty($node->workflow)) {
         $choices = workflow_field_choices($node);
         $keys = array_keys($choices);
-        $sid = array_shift($keys);
+        $state_name = array_shift($keys);
       }
       // Note no break; fall through to 'update' case.
     case 'update':
@@ -230,11 +230,11 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       }
 
       // Get new state from value of workflow form field, stored in $node->workflow.
-      if (!isset($sid)) {
-        $sid = $node->workflow;
+      if (!isset($state_name)) {
+        $state_name = $node->workflow;
       }
 
-      workflow_transition($node, $sid);
+      workflow_transition($node, $state_name);
       break;
 
     case 'delete':
@@ -252,14 +252,14 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
 function workflow_comment($a1, $op) {
   if (($op == 'insert' || $op == 'update') && isset($a1['workflow'])) {
     $node = node_load($a1['nid']);
-    $sid = $a1['workflow'];
+    $state_name = $a1['workflow'];
     $node->workflow_comment = $a1['workflow_comment'];
     if (isset($a1['workflow_scheduled'])) {
       $node->workflow_scheduled = $a1['workflow_scheduled'];
       $node->workflow_scheduled_date = $a1['workflow_scheduled_date'];
       $node->workflow_scheduled_hour = $a1['workflow_scheduled_hour'];
     }
-    workflow_transition($node, $sid);
+    workflow_transition($node, $state_name);
   }
 }
 
@@ -469,9 +469,9 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     $name = '';
 
     // See if scheduling information is present.
-    if (isset($node->_workflow_scheduled_timestamp) && isset($node->_workflow_scheduled_sid)) {
-      // The default value should be the upcoming sid.
-      $current = $node->_workflow_scheduled_sid;
+    if (isset($node->_workflow_scheduled_timestamp) && isset($node->_workflow_scheduled_state_name)) {
+      // The default value should be the upcoming state_name.
+      $current = $node->_workflow_scheduled_state_name;
       $timestamp = $node->_workflow_scheduled_timestamp;
       $comment = $node->_workflow_scheduled_comment;
     }
@@ -616,13 +616,13 @@ function workflow_select_next_state_action($node, $context) {
 
   // Get the node's new state.
   $choices = workflow_field_choices($node);
-  foreach ($choices as $sid => $name) {
+  foreach ($choices as $state_name => $label) {
     if (isset($flag)) {
-      $new_state = $sid;
-      $new_state_name = $name;
+      $new_state = $state_name;
+      $new_state_label = $label;
       break;
     }
-    if ($sid == $current_state) {
+    if ($state_name == $current_state) {
       $flag = TRUE;
     }
   }
@@ -728,7 +728,7 @@ function workflow_field_choices($node) {
   $transitions = workflow_allowable_transitions($current_state, 'to', $roles);
 
   // Include current state if it is not the (creation) state.
-  if ($current_sid == _workflow_creation_state($name)) {
+  if ($current_state == _workflow_creation_state($name)) {
     unset($transitions[$current_state]);
   }
   return $transitions;
@@ -743,7 +743,7 @@ function workflow_field_choices($node) {
  *   The machine name of the current state.
  */
 function workflow_node_current_state($node) {
-  $sid = FALSE;
+  $state_name = FALSE;
 
   // There is no nid when creating a node.
   if (!empty($node->nid)) {
@@ -759,20 +759,13 @@ function workflow_node_current_state($node) {
 }
 
 /**
- * Return the ID of the creation state for this workflow.
+ * Helper function to generate a creation state name.
  *
  * @param $name
  *   The machine name of the workflow.
  */
 function _workflow_creation_state($name) {
-  static $cache;
-
-  if (empty($cache[$name])) {
-    $sql = "SELECT sid FROM {workflow_states} WHERE workflow_name = '%s' AND sysid = %d";
-    $cache[$name] = db_result(db_query($sql, $name, WORKFLOW_CREATION));
-  }
-
-  return empty($cache[$name]) ? FALSE : $cache[$name];
+  return $name .'_'. WORKFLOW_CREATION_NAME;
 }
 
 /**
@@ -1068,7 +1061,7 @@ function workflow_create($workflow) {
 
   if (drupal_write_record('workflows', $workflow)) {
     $state = array(
-      'name' => $workflow->name .'_'. WORKFLOW_CREATION_NAME,
+      'name' => _workflow_creation_state($workflow->name),
       'workflow_name' => $workflow->name,
       'label' => t('(creation)'),
       'sysid' => WORKFLOW_CREATION,
@@ -1083,23 +1076,20 @@ function workflow_create($workflow) {
 }
 
 /**
- * Save a workflow's name in the database.
+ * Update an existing workflow.
  *
- * @param $wid
- *   The ID of the workflow.
- * @param $name
- *   The name of the workflow.
- * @param $tab_roles
- *   Array of role IDs allowed to see the workflow tab.
- * @param $options
- *   Array of key-value pairs that constitute various settings for
- *   this workflow. An example is whether to show the comment form
- *   on the workflow tab page or not.
+ * @param $workflow
+ *   The workflow object to update.
+ * @return
+ *   The updated workflow object.
  */
-function workflow_update($wid, $name, $tab_roles, $options) {
-  db_query("UPDATE {workflows} SET name = '%s', tab_roles = '%s', options = '%s' WHERE wid = %d", $name, implode(',', $tab_roles), serialize($options), $wid);
-   // Workflow name change affects tabs (local tasks), so force menu rebuild.
+function workflow_update($workflow) {
+  $workflow = drupal_write_record('workflows', $workflow, 'wid');
+
+  // Workflow name change affects tabs (local tasks), so force menu rebuild.
   menu_rebuild();
+
+  return $workflow;
 }
 
 /**
@@ -1316,17 +1306,18 @@ function workflow_transition_delete($tid) {
  * @param $state_name
  *   The machine name of the state in question.
  * @param $dir
- *   The direction of the transition: 'to' or 'from' the state denoted by $sid.
- *   When set to 'to' all the allowable states that may be moved to are
- *   returned; when set to 'from' all the allowable states that may move to the
- *   current state are returned.
+ *   The direction of the transition: 'to' or 'from' the state denoted by
+ *   $state_name. When set to 'to' all the allowable states that may be moved to
+ *   are returned; when set to 'from' all the allowable states that may move to
+ *   the current state are returned.
  * @param mixed $roles
  *   Array of ints (and possibly the string 'author') representing the user's
  *   roles. If the string 'ALL' is passed (instead of an array) the role
  *   constraint is ignored (this is the default for backwards compatibility).
  *
  * @return
- *   Associative array of states ($sid => $state_name pairs), excluding current state.
+ *   Associative array of states ($state_name => $state_label pairs), excluding
+ *   current state.
  */
 function workflow_allowable_transitions($state_name, $dir = 'to', $roles = 'ALL') {
   $transitions = array();
@@ -1518,9 +1509,9 @@ function workflow_cron() {
 
     // Make sure transition is still valid; i.e., the node is
     // still in the state it was when the transition was scheduled.
-    if ($node->_workflow == $row->old_sid) {
+    if ($node->_workflow == $row->old_state_name) {
       // Do transition.
-      workflow_execute_transition($node, $row->sid, $row->comment, TRUE);
+      workflow_execute_transition($node, $row->state_name, $row->comment, TRUE);
 
       watchdog('content', '%type: scheduled transition of %title.', array('%type' => t($node->type), '%title' => $node->title), WATCHDOG_NOTICE, l(t('view'), 'node/'. $node->nid));
       $clear_cache = TRUE;
@@ -1626,7 +1617,7 @@ function workflow_token_values($type, $object = NULL) {
         $workflow = workflow_load($machine_name);
         $values['workflow-name'] = $workflow->label;
         $values['workflow-machine-name'] = $machine_name;
-        $states = workflow_get_states($machine_name, 'sid');
+        $states = workflow_get_states($machine_name);
       }
       else {
         break;
@@ -1642,22 +1633,22 @@ function workflow_token_values($type, $object = NULL) {
       if (isset($node->workflow) && !isset($node->workflow_stamp)) {
         // The node is being submitted but the form data has not been saved to the database yet,
         // so we set the token values from the workflow form fields.
-        $sid = $node->workflow;
-        $old_sid = isset($row->sid) ? $row->sid : _workflow_creation_state($machine_name);
+        $state_name = $node->workflow;
+        $old_state_name = isset($row->state_name) ? $row->state_name : _workflow_creation_state($machine_name);
         $date = time();
         $user_name = $node->uid ? $node->name : variable_get('anonymous', 'Anonymous');
         $uid = $node->uid;
         $mail = $node->uid ? $node->user_mail : '';
         $comment = $node->workflow_comment;
       }
-      else if (!isset($node->workflow) && empty($row->sid)) {
+      else if (!isset($node->workflow) && empty($row->state_name)) {
         // If the state is not specified and the node has no workflow history,
         // the node is being inserted and will soon be transitioned to the first valid state.
         // We find this state using the same logic as workflow_nodeapi().
         $choices = workflow_field_choices($node);
         $keys = array_keys($choices);
-        $sid = array_shift($keys);
-        $old_sid = _workflow_creation_state($machine_name);
+        $state_name = array_shift($keys);
+        $old_state_name = _workflow_creation_state($machine_name);
         $date = time();
         $user_name = $node->uid ? $node->name : variable_get('anonymous', 'Anonymous');
         $uid = $node->uid;
@@ -1666,16 +1657,16 @@ function workflow_token_values($type, $object = NULL) {
       }
       else {
         // Default to the most recent transition data in the workflow history table.
-        $sid = $row->sid;
-        $old_sid = $row->old_sid;
+        $state_name = $row->state_name;
+        $old_state_name = $row->old_state_name;
         $date = $row->stamp;
         $user_name = $account->uid ? $account->name : variable_get('anonymous', 'Anonymous');
         $uid = $account->uid;
         $mail = $account->uid ? $account->mail : '';
       }
 
-      $values['workflow-current-state-name']                =  $states[$sid]->label;
-      $values['workflow-old-state-name']                    =  $states[$old_sid]->label;
+      $values['workflow-current-state-name']                =  $states[$state_name]->label;
+      $values['workflow-old-state-name']                    =  $states[$old_state_name]->label;
 
       $values['workflow-current-state-date-iso']            =  date('Ymdhis', $date);
       $values['workflow-current-state-date-tstamp']         =  $date;
