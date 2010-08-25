@@ -43,6 +43,7 @@ function workflow_access_update_6200() {
   $schema = _workflow_access_update_6200_schema();
 
   // This function resides in workflow.install
+  drupal_load('install', 'workflow');
   _workflow_update_6200($ret, $schema);
 
   return $ret;
@@ -91,7 +92,8 @@ function workflow_access_update_6203() {
   $schema = _workflow_access_update_6200_schema();
 
   // This function resides in workflow.install
-  _worfklow_update_6203($ret, $schema);
+  drupal_load('install', 'workflow');
+  _workflow_update_6203($ret, $schema);
 
   return $ret;
 }
