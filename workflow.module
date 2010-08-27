@@ -333,19 +333,25 @@ function workflow_transition($node, $state_name) {
  *
  * @param $form
  *   An existing form definition array.
+ * @param $title
+ *   The translated and sanitized title of the state field.
  * @param $name
- *   The name of the workflow.
- * @param $current
- *   The state ID of the current state, used as the default value.
+ *   The machine name of the workflow.
+ * @param $default_value
+ *   The machine name for the default state.
  * @param $choices
  *   An array of possible target states.
+ * @param $timestamp
+ *   Optional timestamp of the scheduled state transition.
+ * @param $comment
+ *   Optional comment of the scheduled state transition.
  */
-function workflow_node_form(&$form, $form_state, $title, $name, $current, $choices, $timestamp = NULL, $comment = NULL) {
+function workflow_node_form(&$form, $form_state, $title, $name, $default_value, $choices, $timestamp = NULL, $comment = NULL) {
   // No sense displaying choices if there is only one choice.
   if (sizeof($choices) == 1) {
     $form['workflow'][$name] = array(
       '#type' => 'hidden',
-      '#value' => $current
+      '#value' => $default_value,
     );
   }
   else {
@@ -355,7 +361,7 @@ function workflow_node_form(&$form, $form_state, $title, $name, $current, $choic
       '#options' => $choices,
       '#name' => $name,
       '#parents' => array('workflow'),
-      '#default_value' => $current
+      '#default_value' => $default_value,
     );
 
     // Display scheduling form only if a node is being edited and user has
@@ -375,20 +381,26 @@ function workflow_node_form(&$form, $form_state, $title, $name, $current, $choic
         '#default_value' => isset($form_state['values']['workflow_scheduled']) ? $form_state['values']['workflow_scheduled'] : $scheduled,
       );
 
+      $sched_date = $form_state['values']['workflow_scheduled_date'];
+
       $form['workflow']['workflow_scheduled_date'] = array(
         '#type' => 'date',
         '#default_value' => array(
-          'day'   => isset($form_state['values']['workflow_scheduled_date']['day']) ? $form_state['values']['workflow_scheduled_date']['day'] : format_date($timestamp, 'custom', 'j'),
-          'month' => isset($form_state['values']['workflow_scheduled_date']['month']) ? $form_state['values']['workflow_scheduled_date']['month'] :format_date($timestamp, 'custom', 'n'),
-          'year'  => isset($form_state['values']['workflow_scheduled_date']['year']) ? $form_state['values']['workflow_scheduled_date']['year'] : format_date($timestamp, 'custom', 'Y')
+          'day'   => isset($sched_date['day']) ? $sched_date['day'] : format_date($timestamp, 'custom', 'j'),
+          'month' => isset($sched_date['month']) ? $sched_date['month'] : format_date($timestamp, 'custom', 'n'),
+          'year'  => isset($sched_date['year']) ? $sched_date['year'] : format_date($timestamp, 'custom', 'Y')
         ),
       );
 
-      $hours = format_date($timestamp, 'custom', 'H:i');
+      // Set up the hour field.
+      $sched_hour = isset($form_state['values']['workflow_scheduled_hour']) ? $form_state['values']['workflow_scheduled_hour'] : format_date($timestamp, 'custom', 'H:i');
+      $description = 'Please enter a time in 24 hour (eg. HH:MM) format. If no time is included, the default will be midnight on the specified date. The current time is: %time';
+      $t_args = array('%time' => format_date(time()));
+
       $form['workflow']['workflow_scheduled_hour'] = array(
         '#type' => 'textfield',
-        '#description' => t('Please enter a time in 24 hour (eg. HH:MM) format. If no time is included, the default will be midnight on the specified date. The current time is: ') . format_date(time()),
-        '#default_value' => $scheduled ? (isset($form_state['values']['workflow_scheduled_hour']) ? $form_state['values']['workflow_scheduled_hour'] : $hours) : NULL,
+        '#description' => t($description, $t_args),
+        '#default_value' => $scheduled ? $sched_hour : NULL,
       );
     }
     if (isset($form['#tab'])) {
@@ -419,7 +431,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     if (isset($form['#node'])) {
       $node = $form['#node'];
       // Abort if no workflow is assigned to this node type.
-      if (!in_array('node', variable_get('workflow_' . $node->type, array('node')))) {
+      if (!($name = workflow_get_workflow_for_type($node->type))) {
         return;
       }
     }
@@ -431,33 +443,35 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
       }
       $node = node_load($form['nid']['#value']);
     }
+
     $choices = workflow_field_choices($node);
     $name = workflow_get_workflow_for_type($node->type);
     $states = workflow_get_states($name);
-    // If this is a preview, the current state should come from
-    // the form values, not the node, as the user may have changed
-    // the state.
-    $current = isset($form_state['values']['workflow']) ? $form_state['values']['workflow'] : workflow_node_current_state($node);
-    $min = $states[$current] == t('(creation)') ? 1 : 2;
+
+    // If this is a preview, the current state should come from the form values,
+    // not the node, as the user may have changed the state.
+    $default_value = isset($form_state['values']['workflow']) ? $form_state['values']['workflow'] : workflow_node_current_state($node);
+    $min = ($default_value == _workflow_creation_state($name)) ? 1 : 2;
     // Stop if user has no new target state(s) to choose.
     if (count($choices) < $min) {
       return;
     }
+
     $workflow = workflow_load($name);
     $form['#wf'] = $workflow;
 
     // If the current node state is not one of the choices, autoselect first choice.
     // We know all states in $choices are states that user has permission to
     // go to because workflow_field_choices() has already checked that.
-    if (!isset($choices[$current])) {
+    if (!isset($choices[$default_value])) {
       $array = array_keys($choices);
-      $current = $array[0];
+      $default_value = $array[0];
     }
 
     if (sizeof($choices) > 1) {
       $form['workflow'] = array(
         '#type' => 'fieldset',
-        '#title' => check_plain($workflow->label),
+        '#title' => $workflow->label,
         '#collapsible' => TRUE,
         '#collapsed' => FALSE,
         '#weight' => 10,
@@ -466,12 +480,11 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
 
     $timestamp = NULL;
     $comment = '';
-    $name = '';
 
     // See if scheduling information is present.
     if (isset($node->_workflow_scheduled_timestamp) && isset($node->_workflow_scheduled_state_name)) {
       // The default value should be the upcoming state_name.
-      $current = $node->_workflow_scheduled_state_name;
+      $default_value = $node->_workflow_scheduled_state_name;
       $timestamp = $node->_workflow_scheduled_timestamp;
       $comment = $node->_workflow_scheduled_comment;
     }
@@ -480,7 +493,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
       $comment = $form_state['values']['workflow_comment'];
     }
 
-    workflow_node_form($form, $form_state, $name, $name, $current, $choices, $timestamp, $comment);
+    workflow_node_form($form, $form_state, $workflow->label, $name, $default_value, $choices, $timestamp, $comment);
   }
 }
 
@@ -713,7 +726,7 @@ function workflow_field_choices($node) {
     // No workflow for this type.
     return array();
   }
-  $states = workflow_get_states($name);
+
   $roles = array_keys($user->roles);
   $current_state = workflow_node_current_state($node);
 
