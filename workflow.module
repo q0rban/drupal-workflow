@@ -1121,20 +1121,17 @@ function workflow_deletewf($name) {
  * not passed, all states for all workflows are given. States that have been 
  * deleted are not included.
  *
- * @param $machine_name
+ * @param $workflow_name
  *   The machine name of the workflow.
- * @param $column
- *   The column to key the $states array by. Possible options are 'state_name'
- *   and 'sid'. Defaults to 'name'.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_states($machine_name = NULL, $column = 'name') {
+function workflow_get_states($workflow_name = NULL) {
   $states = array();
 
-  if (isset($machine_name)) {
+  if (isset($workflow_name)) {
     $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, sid";
-    $result = db_query($query, $machine_name);
+    $result = db_query($query, $workflow_name);
   }
   else {
     $query = "SELECT * FROM {workflow_states} ws WHERE status = 1 ORDER BY weight, sid";
@@ -1142,37 +1139,32 @@ function workflow_get_states($machine_name = NULL, $column = 'name') {
   }
 
   while ($data = db_fetch_object($result)) {
-    if (is_null($machine_name)) {
+    if (is_null($workflow_name)) {
       $workflow = workflow_load($data->workflow_name);
       $data->label = $workflow->label .': '. $data->label;
     }
     $data->label = check_plain(t($data->label));
-    // Ensure $column is a unique field. If not, default to state_name.
-    $column = in_array($column, array('name', 'sid')) ? $column : 'name';
-    $states[$data->{$column}] = $data;
+    $states[$data->name] = $data;
   }
 
   return $states;
 }
 
 /**
- * Load workflow state names for a workflow from the database. If $machine_name 
+ * Load workflow state names for a workflow from the database. If $workflow_name 
  * is not passed, all states for all workflows are given. States that have been 
  * deleted are not included.
  *
  * @param $workflow_name
  *   The machine name of the workflow.
- * @param $column
- *   The field to key the $states array by. Possible options are 'name'
- *   and 'sid'. Defaults to 'name'.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_state_labels($workflow_name = NULL, $column = 'name') {
-  $states = workflow_get_states($workflow_name, $column);
+function workflow_get_state_labels($workflow_name = NULL) {
+  $states = workflow_get_states($workflow_name);
 
-  foreach ($states as $key => $state) {
-    $states[$key] = $state->label;
+  foreach ($states as $name => $state) {
+    $states[$name] = $state->label;
   }
 
   return $states;
