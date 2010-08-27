@@ -1123,18 +1123,28 @@ function workflow_deletewf($name) {
  *
  * @param $workflow_name
  *   The machine name of the workflow.
+ * @param $all
+ *   If TRUE, will return all workflows, regardless of status.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_states($workflow_name = NULL) {
+function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   $states = array();
 
-  if (isset($workflow_name)) {
-    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, sid";
+  if (isset($workflow_name) && $all) {
+    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' ORDER BY weight, label";
     $result = db_query($query, $workflow_name);
   }
+  else if (isset($workflow_name)) {
+    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, label";
+    $result = db_query($query, $workflow_name);
+  }
+  else if ($all) {
+    $query = "SELECT * FROM {workflow_states} ORDER BY weight, label";
+    $result = db_query($query);
+  }
   else {
-    $query = "SELECT * FROM {workflow_states} ws WHERE status = 1 ORDER BY weight, sid";
+    $query = "SELECT * FROM {workflow_states} WHERE status = 1 ORDER BY weight, label";
     $result = db_query($query);
   }
 
@@ -1157,11 +1167,13 @@ function workflow_get_states($workflow_name = NULL) {
  *
  * @param $workflow_name
  *   The machine name of the workflow.
+ * @param $all
+ *   If TRUE, will return all workflows, regardless of status.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_state_labels($workflow_name = NULL) {
-  $states = workflow_get_states($workflow_name);
+function workflow_get_state_labels($workflow_name = NULL, $all = FALSE) {
+  $states = workflow_get_states($workflow_name, $all);
 
   foreach ($states as $name => $state) {
     $states[$name] = $state->label;
