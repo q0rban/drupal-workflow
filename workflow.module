@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.module,v 1.83.2.14.2.2 2010/08/30 20:36:30 q0rban Exp $
+// $Id: workflow.module,v 1.83.2.14.2.3 2010/08/30 21:44:26 q0rban Exp $
 
 /**
  * @file
@@ -180,6 +180,17 @@ function workflow_theme() {
       ),
     ),
   );
+}
+
+/**
+ * Implementation of hook_forms().
+ */
+function workflow_forms() {
+  $forms = array();
+  foreach (workflow_get_all() as $workflow_name => $workflow) {
+    $forms['workflow_states_form_'. $workflow_name]['callback'] = 'workflow_states_form';
+  }
+  return $forms;
 }
 
 /**

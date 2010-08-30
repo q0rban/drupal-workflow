@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow_access.module,v 1.6.4.1 2010/08/27 19:37:49 q0rban Exp $
+// $Id: workflow_access.module,v 1.6.4.2 2010/08/30 21:44:26 q0rban Exp $
 
 /**
  * @file 
@@ -64,10 +64,10 @@ function workflow_access_form_workflow_edit_form_alter(&$form, $form_state) {
   );
 
   // Add a table for every workflow state.
-  $states = workflow_get_states($form['workflow_name']['#value']);
-  foreach ($states as $state_name => $state) {
+  $states = workflow_get_state_labels($form['workflow_name']['#value']);
+  foreach ($states as $state_name => $label) {
     
-    if (workflow_is_system_state($state)) {
+    if (workflow_is_system_state($label)) {
       // No need to set perms on creation.
       continue;
     }
@@ -98,7 +98,7 @@ function workflow_access_form_workflow_edit_form_alter(&$form, $form_state) {
     // TODO better tables using a #theme function instead of direct #prefixing
     $form['workflow_access'][$state_name] = array(
       '#type' => 'fieldset', 
-      '#title' => $state,
+      '#title' => $label,
       '#collapsible' => TRUE,
       '#tree' => TRUE,
     );

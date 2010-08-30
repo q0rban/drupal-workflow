@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.3.2.2 2010/08/30 20:36:30 q0rban Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.3 2010/08/30 21:44:26 q0rban Exp $
 
 /**
  * @file
@@ -429,7 +429,8 @@ function workflow_overview() {
 
     $row[] = array($workflow->label, theme('links', $links));
 
-    $states_form = drupal_get_form('workflow_states_form', $workflow->name);
+    // This calls up workflow_states_form. @see workflow_forms().
+    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name);
     $row[] = array(array('data' => $states_form, 'colspan' => '2'));
   }
 
@@ -453,11 +454,6 @@ function workflow_overview() {
 function workflow_states_form(&$form_state, $workflow_name) {
   $form = array();
 
-  $form['workflow_name'] = array(
-    '#type' => 'value',
-    '#value' => $workflow_name,
-  );
-
   $form['#states'] = $states = workflow_get_states($workflow_name);
   $form['states']['#tree'] = TRUE;
 
@@ -472,6 +468,12 @@ function workflow_states_form(&$form_state, $workflow_name) {
     '#type' => 'submit',
     '#value' => t('Submit'),
   );
+
+  // Since we're using custom form_ids (@see workflow_forms()) we need to 
+  // manually specify some FAPI stuff.
+  $form['buttons']['submit']['#submit'] = array('workflow_states_form_submit');
+  $form['#validate'] = array('workflow_states_form_validate');
+  $form['#theme'] = array('workflow_states_form_'. $workflow_name, 'workflow_states_form');
 
   return $form;
 }
@@ -595,7 +597,7 @@ function _workflow_state_create_form(&$form_state, $workflow_name) {
  * @see workflow_states_form()
  */
 function theme_workflow_states_form($form) {
-  $rows = $row = array();
+  $rows = $cols = array();
 
   foreach (element_children($form['states']) as $state_name) {
     $state_form = &$form['states'][$state_name];
@@ -633,7 +635,7 @@ function theme_workflow_states_form($form) {
   // we've already rendered all of our records, we always call drupal_render()
   // on the form itself after we're done, so hidden security fields and other
   // elements (like buttons) will appear properly at the bottom of the form.
-  $id = 'workflow-states-form-'. $worfklow_name;
+  $id = $form['#id'] .'-table';
   $header = array(t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
   $output = theme('table', $header, $rows, array('id' => $id));
   $output .= drupal_render($form);
@@ -722,7 +724,6 @@ function workflow_states_form_validate($form, &$form_state) {
   foreach ($form_state['values']['states'] as $state_name => $state) {
     // No need to validate an empty form.
     if (!$state['system_state'] && (empty($state['name']) XOR empty($state['label']))) {
-      dsm($state);
       $form_key = 'states]['. $state_name .'][';
 
       // Make sure the fields aren't empty.
@@ -745,7 +746,7 @@ function workflow_states_form_submit($form, &$form_state) {
   foreach ($form_state['values']['states'] as $state_name => $state) {
     // Ensure the state has all necessary fields and isn't a system state before
     // saving.
-    if (!empty($state['name']) && !empty($state['label']) && !workflow_is_system_state($state['label'])) {
+    if (!empty($state['name']) && !empty($state['label']) && !$state['system_state']) {
       $state['name'] = strtolower($state['name']);
       $state = workflow_state_save($state);
       if (empty($form_state['values']['states'][$state_name]['sid'])) {
