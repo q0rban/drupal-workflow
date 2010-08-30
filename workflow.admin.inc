@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.3.2.1 2010/08/27 19:37:49 q0rban Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.2 2010/08/30 20:36:30 q0rban Exp $
 
 /**
  * @file
@@ -76,7 +76,7 @@ function workflow_add_form_submit($form, &$form_state) {
   if ($workflow = workflow_create($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
     drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.', array('%label' => $workflow->label)), 'status');
-    $form_state['redirect'] = 'admin/build/workflow/state/'. $workflow->name;
+    $form_state['redirect'] = 'admin/build/workflow/edit/'. $workflow->name;
   }
   else {
     watchdog('workflow', 'There was an error creating workflow %label', array('%label' => $values['label']), WATCHDOG_WARNING);
@@ -359,140 +359,6 @@ function workflow_edit_form_submit($form, &$form_state) {
 }
 
 /**
- * Menu callback and form builder. Workflow create/edit form.
- *
- * @param $workflow_name
- *   The machine name of the workflow.
- * @param $state_name
- *   The machine name of the state.
- * @return
- *   Form array.
- */
-function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
-  $form['wid'] = array('#type' => 'value', '#value' => $wid);
-
-  if (!isset($workflow_name)) {
-    drupal_set_message(t('You must first select a workflow to add a state to.'));
-    drupal_goto('admin/build/workflow');
-  }
-
-  if (isset($state_name)) {
-    $state = workflow_get_state($state_name);
-
-    // Don't allow users to edit a system state.
-    if (workflow_is_system_state($state->label)) {
-      return drupal_access_denied();
-    }
-  }
-
-  $form['workflow_name'] = array(
-    '#type' => 'value',
-    '#value' => $workflow_name,
-  );
-
-  $form['label'] = array(
-    '#type'  => 'textfield',
-    '#title' => t('State label'),
-    '#default_value' => empty($state->label) ? '' : $state->label,
-    '#size'  => '16',
-    '#maxlength' => '254',
-    '#required' => TRUE,
-    '#description' => t('Enter the name for a state in your workflow. For example, if you were doing a meal workflow it may include states like <em>shop</em>, <em>prepare</em>, <em>eat</em>, and <em>clean up</em>.'),
-  );
-
-  // Only show the machine name field if this is a new state.
-  if (empty($state)) {
-    drupal_set_title(t('Add a new state to workflow %workflow', array('%workflow' => workflow_get_label($workflow_name))));
-    $form['name'] = array(
-      '#type'  => 'textfield',
-      '#title' => t('Machine name'),
-      '#default_value' => empty($state->name) ? '' : $state->name,
-      '#size'  => '16',
-      '#maxlength' => '254',
-      '#required' => TRUE,
-      '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
-    );
-  }
-  else {
-    drupal_set_title(t('Edit workflow state @state', array('@state' => $state->label)));
-    $form['#state'] = $state;
-    $form['sid'] = array(
-      '#type' => 'value',
-      '#value' => $state->sid,
-    );
-
-    $form['name'] = array(
-      '#type' => 'value',
-      '#value' => $state->name,
-    );
-  }
-
-  $form['weight'] = array(
-    '#type' => 'weight',
-    '#title' => t('Weight'),
-    '#default_value' => empty($state->weight) ? 0 : $state->weight,
-    '#description' => t('In listings, the heavier states will sink and the lighter states will be positioned nearer the top.'),
-  );
-
-  $form['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Save')
-  );
-
-  return $form;
-}
-
-/**
- * Validate the state addition form.
- *
- * @see workflow_state_form()
- */
-function workflow_state_form_validate($form, &$form_state) {
-  $label = $form_state['values']['label'];
-  $machine_name = strtolower($form_state['values']['name']);
-  $workflow_name = $form_state['values']['workflow_name'];
-  $wf_states = workflow_get_states($workflow_name);
-
-  // Make sure name is not a duplicate
-  foreach($wf_states as $state) {
-    if ($state->label == $label) {
-      form_set_error('label', t('A state with the label %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $label)));
-      break;
-    }
-  }
-
-  if (empty($form['#state'])) {
-    // Make sure machine name contains only alnum chars and underscores.
-    if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
-      form_set_error('name', t("The machine name must consist of alphanumeric or underscore characters only."));
-    }
-
-    // Ensure that this machine name is unique.
-    if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
-      form_set_error('name', t('A state with the machine name %name already exists. You might try pre-fixing it with the machine name of the workflow, such as %example.', array('%name' => $machine_name, '%example' => $workflow_name .'_'. $machine_name)));
-    }
-  }
-}
-
-/**
- * Submit handler for state addition form.
- *
- * @see workflow_state_form()
- */
-function workflow_state_form_submit($form, &$form_state) {
-  $form_state['values']['name'] = strtolower($form_state['values']['name']);
-  $state = workflow_state_save($form_state['values']);
-  if (array_key_exists('sid', $form_state['values'])) {
-    drupal_set_message(t('The workflow state was updated.'));
-  }
-  else {
-    watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
-    drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
-  }
-  $form_state['redirect'] = 'admin/build/workflow';
-}
-
-/**
  * Form builder. Build the grid of transitions for defining a workflow.
  *
  * @param $machine_name
@@ -542,9 +408,6 @@ function workflow_overview() {
 
   foreach (workflow_get_all() as $workflow_name => $workflow) {
     $links = array(
-      'workflow_overview_add_state' => array(
-        'title' => t('Add state'),
-        'href' => "admin/build/workflow/state/$workflow_name"),
       'workflow_overview_actions' => array(
         'title' => t('Actions'),
         'href' => "admin/build/trigger/workflow/$workflow_name"),
@@ -558,41 +421,16 @@ function workflow_overview() {
 
     // Allow modules to insert their own workflow operations.
     $links = array_merge($links, module_invoke_all('workflow_operations', 'workflow', $workflow->name));
-
-    $states = workflow_get_states($workflow_name);
-    if (!module_exists('trigger') || count($states) < 2) {
+    // Remove the Actions link if Trigger is not enabled or the Workflow has 
+    // less than 2 states.
+    if (!module_exists('trigger') || count(workflow_get_states($workflow_name)) < 2) {
       unset($links['workflow_overview_actions']);
     }
 
-    $row[] = array(check_plain(t($workflow->label)), theme('links', $links));
-    $subrows = array();
+    $row[] = array($workflow->label, theme('links', $links));
 
-    foreach ($states as $state_name => $state) {
-      $state_links = array();
-      if (!workflow_is_system_state($state->label)) {
-        $state_links = array(
-          'workflow_overview_edit_state' => array(
-            'title' => t('Edit'),
-            'href' => "admin/build/workflow/state/$workflow_name/$state_name",
-          ),
-          'workflow_overview_delete_state' => array(
-            'title' => t('Delete'),
-            'href' => "admin/build/workflow/state/delete/$workflow_name/$state_name"
-          ),
-        );
-      }
-      // Allow modules to insert state operations.
-      $state_links = array_merge($state_links, module_invoke_all('workflow_operations', 'state', $workflow->name, $state->name));
-      $subrows[] = array($state->label, theme('links', $state_links));
-      unset($state_links);
-    }
-
-    $subheader_state      = array('data' => t('State'), 'style' => 'width: 30%');
-    $subheader_operations = array('data' => t('Operations'), 'style' => 'width: 70%');
-    $subheader_style      = array('style' => 'width: 100%; margin: 3px 20px 20px;');
-    $subtable = theme('table', array($subheader_state, $subheader_operations), $subrows, $subheader_style);
-
-    $row[] = array(array('data' => $subtable, 'colspan' => '2'));
+    $states_form = drupal_get_form('workflow_states_form', $workflow->name);
+    $row[] = array(array('data' => $states_form, 'colspan' => '2'));
   }
 
   if ($row) {
@@ -604,6 +442,319 @@ function workflow_overview() {
   }
 
   return $output;
+}
+
+/**
+ * Form to re-order and create states for a specific workflow.
+ *
+ * @param $workflow_name
+ *   The machine name of the states' workflow.
+ */
+function workflow_states_form(&$form_state, $workflow_name) {
+  $form = array();
+
+  $form['workflow_name'] = array(
+    '#type' => 'value',
+    '#value' => $workflow_name,
+  );
+
+  $form['#states'] = $states = workflow_get_states($workflow_name);
+  $form['states']['#tree'] = TRUE;
+
+  foreach ($states as $state_name => $state) {
+    $form['states'][$state_name] = _workflow_state_edit_form($form_state, $workflow_name, $state);
+  }
+
+  // Now add an empty state form.
+  $form['states'][] = _workflow_state_create_form(&$form_state, $workflow_name);
+
+  $form['buttons']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+
+  return $form;
+}
+
+/**
+ * Builds the fields for a single record on the drag-and-drop overview form.
+ *
+ * This internal function should not be called outside the module, unless you're
+ * feeling particularly cheeky.
+ *
+ * @param $workflow_name
+ *   The machine name of the workflow.
+ * @param $state
+ *   The existing state object.
+ * @return
+ *   Form array.
+ */
+function _workflow_state_edit_form(&$form_state, $workflow_name, $state) {
+  $form['#state'] = $state;
+  $form['workflow_name'] = array(
+    '#type' => 'value',
+    '#value' => $workflow_name,
+  );
+  $form['sid'] = array(
+    '#type' => 'value',
+    '#value' => $state->sid,
+  );
+   $form['name'] = array(
+    '#type' => 'value',
+    '#value' => $state->name,
+  );
+
+  $form['system_state'] = array(
+    '#type' => 'value',
+    '#value' => workflow_is_system_state($state->label),
+  );
+
+  // Only allow editing of the label on non-system states.
+  if ($form['system_state']['#value']) {
+    $form['label'] = array(
+      '#type' => 'item',
+      '#value' => $state->label,
+    );
+    $form['weight'] = array(
+      '#type' => 'value',
+      '#value' => $state->weight,
+    );
+  }
+  else {
+    $form['label'] = array(
+      '#type'  => 'textfield',
+      '#title' => t('State label'),
+      '#default_value' => empty($state->label) ? '' : $state->label,
+      '#size'  => '16',
+      '#maxlength' => '254',
+      '#element_validate' => array('workflow_state_validate_label'),
+    );
+    $form['weight'] = array(
+      '#type' => 'weight',
+      '#title' => t('Weight'),
+      '#default_value' => empty($state->weight) ? 0 : $state->weight,
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Builds the state creation form fields for the drag-and-drop overview form.
+ *
+ * This internal function should not be called outside the module, unless you're
+ * feeling particularly cheeky.
+ *
+ * @param $workflow_name
+ *   The machine name of the workflow.
+ * @return
+ *   Form array.
+ */
+function _workflow_state_create_form(&$form_state, $workflow_name) {
+  $form = array();
+
+  $form['workflow_name'] = array(
+    '#type' => 'value',
+    '#value' => $workflow_name,
+  );
+
+  $form['label'] = array(
+    '#type'  => 'textfield',
+    '#title' => t('State label'),
+    '#size'  => '16',
+    '#maxlength' => '254',
+    '#description' => t('Enter the name for a state in your workflow. For example, if you were doing a meal workflow it may include states like <em>shop</em>, <em>prepare</em>, <em>eat</em>, and <em>clean up</em>.'),
+    '#element_validate' => array('workflow_state_validate_label'),
+  );
+
+  // Only show the machine name field if this is a new state.
+  $form['name'] = array(
+    '#type'  => 'textfield',
+    '#title' => t('Machine name'),
+    '#size'  => '16',
+    '#maxlength' => '254',
+    '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
+    '#element_validate' => array('workflow_state_validate_machine_name'),
+  );
+
+  $form['weight'] = array(
+    '#type' => 'weight',
+    '#title' => t('Weight'),
+    '#default_value' => 0,
+    '#description' => t('In listings, the heavier states will sink and the lighter states will be positioned nearer the top.'),
+  );
+
+  return $form;
+}
+
+/**
+ * Theme the drag-and-drop overview form.
+ *
+ * Arranges records in a table, and adds the css and js for draggable sorting.
+ *
+ * @see workflow_states_form()
+ */
+function theme_workflow_states_form($form) {
+  $rows = $row = array();
+
+  foreach (element_children($form['states']) as $state_name) {
+    $state_form = &$form['states'][$state_name];
+    $cols = array();
+
+    // Render the hidden 'sid' field and the title of the record into the same 
+    // column of the row, keeping in mind that 'sid' may be empty.
+    $sid = empty($state_form['sid']) ? '' : drupal_render($state_form['sid']);
+    unset($state_form['label']['#title']);
+    $cols[] = $sid . drupal_render($state_form['label']);
+
+    // If the weight field isn't disabled, add an identifying CSS class to it, 
+    // as it's the one the tabledrag.js will be controlling.
+    if (!$state_form['weight']['#disabled']) {
+      $state_form['weight']['#attributes']['class'] = 'workflow-state-weight';
+    }
+    $cols[] = drupal_render($state_form['weight']);
+
+    // The machine name field.
+    $name_field = '<span class="machine-name">'. check_plain($state_form['name']['#value']) .'</span>';
+    $cols[] = $name_field . drupal_render($state_form['name']);
+
+    // Operations column, which is empty if this isn't an existing state.
+    $cols[] = empty($form['#states'][$state_name]) ? '' : _workflow_state_links($form['#states'][$state_name]);
+
+    // Add the new row to our collection of rows, and give it the 'draggable'
+    // class if the row isn't a system state.
+    $rows[] = array(
+      'data' => $cols,
+      'class' => $state_form['system_state']['#value'] ? '' : 'draggable',
+    );
+  }
+
+  // Render a list of header titles, and our array of rows, into a table. Even
+  // we've already rendered all of our records, we always call drupal_render()
+  // on the form itself after we're done, so hidden security fields and other
+  // elements (like buttons) will appear properly at the bottom of the form.
+  $id = 'workflow-states-form-'. $worfklow_name;
+  $header = array(t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
+  $output = theme('table', $header, $rows, array('id' => $id));
+  $output .= drupal_render($form);
+
+  // Now that we've built our output, tell Drupal to add the tabledrag.js library.
+  // We'll pass in the ID of the table, the behavior we want it to use, and the
+  // class that appears on each 'weight' form element it should be controlling.
+  drupal_add_tabledrag($id, 'order', 'self', 'workflow-state-weight');
+
+  return $output;
+}
+
+/**
+ * Build the edit and delete links for a single record.
+ *
+ * @see workflow_states_form()
+ */
+function _workflow_state_links($state) {
+  $links = array();
+
+  if (!workflow_is_system_state($state->label)) {
+    $links['workflow_overview_delete_state'] = array(
+      'title' => t('Delete'),
+      'href' => "admin/build/workflow/state/delete/{$state->workflow_name}/{$state->name}",
+      'query' => drupal_get_destination(),
+    );
+  }
+
+  // Allow modules to insert state operations.
+  $links = array_merge($links, module_invoke_all('workflow_operations', 'state', $workflow->name, $state->name));
+
+  return theme('links', $links);
+}
+
+/**
+ * Validate the state label.
+ *
+ * @see workflow_states_form()
+ */
+function workflow_state_validate_label($element, &$form_state) {
+  $workflow_name = $form_state['values']['workflow_name'];
+  $wf_states = workflow_get_states($workflow_name);
+  $label = $element['#value'];
+
+  // Unset this workflow state, if it exists. We detect the machine name from 
+  // #parents... it's the second to last item in the array.
+  $key = count($element['#parents']) - 2;
+  $machine_name = $element['#parents'][$key];
+  unset($wf_states[$machine_name]);
+
+  // Make sure label is not already in use in this workflow.
+  foreach ($wf_states as $wf_state) {
+    if ($wf_state->label == check_plain(t($label))) {
+      form_error($element, t('A state with the label %label already exists in this workflow. Please enter another label for your new state.', array('%label' => $label)));
+      break;
+    }
+  }
+}
+
+/**
+ * Validate the state machine name.
+ *
+ * @see workflow_states_form()
+ */
+function workflow_state_validate_machine_name($element, &$form_state) {
+  $workflow_name = $form_state['values']['workflow_name'];
+  $machine_name = strtolower($element['#value']);
+
+  // Make sure machine name contains only alnum chars and underscores.
+  if (preg_match("/[^[:alnum:]_]/", $machine_name)) {
+    form_error($element, t("The machine name must consist of alphanumeric or underscore characters only."));
+  }
+
+  // Ensure that this machine name is unique.
+  if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
+    form_error($element, t('A state with the machine name %name already exists.', array('%name' => $machine_name)));
+  }
+}
+
+/**
+ * Validate the states form.
+ *
+ * @see workflow_states_form()
+ */
+function workflow_states_form_validate($form, &$form_state) {
+  foreach ($form_state['values']['states'] as $state_name => $state) {
+    // No need to validate an empty form.
+    if (!$state['system_state'] && (empty($state['name']) XOR empty($state['label']))) {
+      dsm($state);
+      $form_key = 'states]['. $state_name .'][';
+
+      // Make sure the fields aren't empty.
+      if (empty($state['label'])) {
+        form_set_error($form_key .'label', t('You must specify a label for this state.'));
+      }
+      if (empty($state['name'])) {
+        form_set_error($form_key .'name', t('You must specify a machine name for this state.'));
+      }
+    }
+  }
+}
+
+/**
+ * Submit handler for states form.
+ *
+ * @see workflow_states_form()
+ */
+function workflow_states_form_submit($form, &$form_state) {
+  foreach ($form_state['values']['states'] as $state_name => $state) {
+    // Ensure the state has all necessary fields and isn't a system state before
+    // saving.
+    if (!empty($state['name']) && !empty($state['label']) && !workflow_is_system_state($state['label'])) {
+      $state['name'] = strtolower($state['name']);
+      $state = workflow_state_save($state);
+      if (empty($form_state['values']['states'][$state_name]['sid'])) {
+        watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
+        drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
+      }
+    }
+  }
+  $form_state['redirect'] = 'admin/build/workflow';
 }
 
 /**

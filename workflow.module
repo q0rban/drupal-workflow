@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.module,v 1.83.2.14.2.1 2010/08/27 19:37:49 q0rban Exp $
+// $Id: workflow.module,v 1.83.2.14.2.2 2010/08/30 20:36:30 q0rban Exp $
 
 /**
  * @file
@@ -71,14 +71,6 @@ function workflow_menu() {
     'file' => 'workflow.admin.inc',
     'type' => MENU_LOCAL_TASK,
   );
-  $items['admin/build/workflow/state'] = array(
-    'title' => 'Add state',
-    'type' => MENU_CALLBACK,
-    'access arguments' => array('administer workflow'),
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('workflow_state_form'),
-    'file' => 'workflow.admin.inc',
-  );
   $items['admin/build/workflow/state/delete'] = array(
     'title' => 'Delete State',
     'type' => MENU_CALLBACK,
@@ -139,6 +131,11 @@ function workflow_node_tab_access($node = NULL) {
 function workflow_theme() {
   return array(
     'workflow_edit_form' => array(
+      'arguments' => array(
+        'form' => array(),
+      ),
+    ),
+    'workflow_states_form' => array(
       'arguments' => array(
         'form' => array(),
       ),
