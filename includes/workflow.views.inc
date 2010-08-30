@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.views.inc,v 1.1.2.1 2009/06/05 21:37:23 jvandyk Exp $
+// $Id: workflow.views.inc,v 1.1.2.1.2.1 2010/08/27 19:37:49 q0rban Exp $
 /**
  * @file
  * Provide views data and handler information for workflow.module.

@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.2 2010/03/02 18:32:54 jvandyk Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.1 2010/08/27 19:37:49 q0rban Exp $
 
 /**
  * @file
@@ -378,7 +378,6 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
 
   if (isset($state_name)) {
     $state = workflow_get_state($state_name);
-    $form['#state'] = $state;
 
     // Don't allow users to edit a system state.
     if (workflow_is_system_state($state->label)) {
@@ -400,23 +399,32 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
     '#required' => TRUE,
     '#description' => t('Enter the name for a state in your workflow. For example, if you were doing a meal workflow it may include states like <em>shop</em>, <em>prepare</em>, <em>eat</em>, and <em>clean up</em>.'),
   );
-  $form['name'] = array(
-    '#type'  => 'textfield',
-    '#title' => t('Machine name'),
-    '#default_value' => empty($state->name) ? '' : $state->name,
-    '#size'  => '16',
-    '#maxlength' => '254',
-    '#required' => TRUE,
-    '#disabled' => !empty($state->name),
-    '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
-  );
 
-  // Set the title and form based on whether we editing or creating.
-  if (!isset($state) || $state === FALSE) {
+  // Only show the machine name field if this is a new state.
+  if (empty($state)) {
     drupal_set_title(t('Add a new state to workflow %workflow', array('%workflow' => workflow_get_label($workflow_name))));
+    $form['name'] = array(
+      '#type'  => 'textfield',
+      '#title' => t('Machine name'),
+      '#default_value' => empty($state->name) ? '' : $state->name,
+      '#size'  => '16',
+      '#maxlength' => '254',
+      '#required' => TRUE,
+      '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
+    );
   }
   else {
     drupal_set_title(t('Edit workflow state @state', array('@state' => $state->label)));
+    $form['#state'] = $state;
+    $form['sid'] = array(
+      '#type' => 'value',
+      '#value' => $state->sid,
+    );
+
+    $form['name'] = array(
+      '#type' => 'value',
+      '#value' => $state->name,
+    );
   }
 
   $form['weight'] = array(
@@ -425,6 +433,7 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
     '#default_value' => empty($state->weight) ? 0 : $state->weight,
     '#description' => t('In listings, the heavier states will sink and the lighter states will be positioned nearer the top.'),
   );
+
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save')
@@ -440,7 +449,7 @@ function workflow_state_form(&$form_state, $workflow_name, $state_name = NULL) {
  */
 function workflow_state_form_validate($form, &$form_state) {
   $label = $form_state['values']['label'];
-  $machine_name = $form_state['values']['name'];
+  $machine_name = strtolower($form_state['values']['name']);
   $workflow_name = $form_state['values']['workflow_name'];
   $wf_states = workflow_get_states($workflow_name);
 
@@ -448,8 +457,8 @@ function workflow_state_form_validate($form, &$form_state) {
   foreach($wf_states as $state) {
     if ($state->label == $label) {
       form_set_error('label', t('A state with the label %state already exists in this workflow. Please enter another name for your new state.', array('%state' => $label)));
+      break;
     }
-    break;
   }
 
   if (empty($form['#state'])) {
@@ -471,6 +480,7 @@ function workflow_state_form_validate($form, &$form_state) {
  * @see workflow_state_form()
  */
 function workflow_state_form_submit($form, &$form_state) {
+  $form_state['values']['name'] = strtolower($form_state['values']['name']);
   $state = workflow_state_save($form_state['values']);
   if (array_key_exists('sid', $form_state['values'])) {
     drupal_set_message(t('The workflow state was updated.'));
@@ -547,7 +557,7 @@ function workflow_overview() {
     );
 
     // Allow modules to insert their own workflow operations.
-    $links = array_merge($links, module_invoke_all('workflow_operations', 'workflow', $workflow->wid));
+    $links = array_merge($links, module_invoke_all('workflow_operations', 'workflow', $workflow->name));
 
     $states = workflow_get_states($workflow_name);
     if (!module_exists('trigger') || count($states) < 2) {
@@ -654,7 +664,7 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 
   return confirm_form(
     $form,
-    t('Are you sure you want to delete %label (and all its transitions)?', array('%label' => $label)),
+    t('Are you sure you want to delete %title (and all its transitions)?', array('%title' => $label)),
     !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
     t('This action cannot be undone.'),
     t('Delete'),
@@ -674,8 +684,8 @@ function workflow_state_delete_form_submit($form, &$form_state) {
   if ($form_state['values']['confirm'] == 1) {
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
     workflow_state_delete($state_name, $new_state);
-    watchdog('workflow', 'Deleted workflow state %label', array('%label' => $label));
-    drupal_set_message(t('The workflow state %label was deleted.', array('%label' => $label)));
+    watchdog('workflow', 'Deleted workflow state %name', array('%name' => $label));
+    drupal_set_message(t('The workflow state %name was deleted.', array('%name' => $label)));
   }
   $form_state['redirect'] = 'admin/build/workflow';
 }
@@ -694,7 +704,7 @@ function workflow_types_form() {
   $options = array('<'. t('None') .'>') + $workflows;
 
   $type_map = array();
-  $result = db_query("SELECT * FROM {workflow_type_map}");
+  $result = db_query("SELECT workflow_name, type FROM {workflow_type_map}");
   while ($data = db_fetch_object($result)) {
     $type_map[$data->type] = $data->workflow_name;
   }
@@ -711,7 +721,7 @@ function workflow_types_form() {
       '#type' => 'select',
       '#title' => check_plain($name),
       '#options' => $options,
-      '#default_value' => isset($type_map[$type]) ? $type_map[$type] : 0
+      '#default_value' => isset($type_map[$type]) ? $type_map[$type] : NULL,
     );
     $form[$type]['placement'] = array(
       '#type' => 'checkboxes',

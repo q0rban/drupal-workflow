@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.module,v 1.83.2.13 2010/03/03 18:17:02 jvandyk Exp $
+// $Id: workflow.module,v 1.83.2.14.2.1 2010/08/27 19:37:49 q0rban Exp $
 
 /**
  * @file
@@ -566,9 +566,9 @@ function workflow_execute_transition($node, $state_name, $comment = NULL, $force
   $node->_workflow = $state_name;
 
   // Register state change with watchdog.
-  $state_name = workflow_get_state_label($state_name);
+  $state_label = workflow_get_state_label($state_name);
   $type = node_get_types('name', $node->type);
-  watchdog('workflow', 'State of @type %node_title set to %state_name', array('@type' => $type, '%node_title' => $node->title, '%state_name' => $state_name), WATCHDOG_NOTICE, l('view', 'node/' . $node->nid));
+  watchdog('workflow', 'State of @type %node_title set to %state_name', array('@type' => $type, '%node_title' => $node->title, '%state_name' => $state_label), WATCHDOG_NOTICE, l('view', 'node/' . $node->nid));
 
   // Notify modules that transition has occurred. Actions should take place
   // in response to this callback, not the previous one.
@@ -972,7 +972,7 @@ function workflow_transition_allowed($tid, $role = NULL) {
  * Tell caller whether a state is a protected system state, such as the creation state.
  *
  * @param $state
- *   The name of the state to test
+ *   The label of the state to test
  * @return
  *   TRUE if the state is a system state.
  */
@@ -1019,40 +1019,38 @@ function workflow_get_workflow_for_type($type) {
 /**
  * Get all workflows.
  *
- * @param $column
- *   The table column to key the workflow from. Options are 'wid', 'name', and 
- *   'label'. Defaults to 'name'.
+ * @param $reset
+ *   Boolean to clear the static cache.
  * @return
  *   An array of workflows.
  */
-function workflow_get_all($column = 'name') {
-  // Default to 'name' if an invalid key is used.
-  $column_options = array('wid', 'name', 'label');
-  $column = in_array($column, $column_options) ? $column : 'name';
+function workflow_get_all($reset = FALSE) {
+  static $workflows;
 
-  $workflows = array();
-  $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
-  while ($data = db_fetch_object($result)) {
-    $data->label = check_plain(t($data->label));
-    $workflows[$data->{$column}] = $data;
+  if (is_null($workflows) || $reset) {
+    $workflows = array();
+
+    $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
+    while ($data = db_fetch_object($result)) {
+      $data->label = check_plain(t($data->label));
+      $workflows[$data->name] = $data;
+    }
   }
+
   return $workflows;
 }
 
 /**
- * Get all workflow names.
+ * Get all workflow labels.
  *
- * @param $column
- *   The table field to key the workflow from. Options are 'wid', 
- *   'workflow_name', and 'label'. Defaults to 'name'.
  * @return
  *   An array of workflow names.
  */
-function workflow_get_all_labels($column = 'name') {
-  $workflows = workflow_get_all($column);
+function workflow_get_all_labels() {
+  $workflows = workflow_get_all();
 
   foreach ($workflows as $key => $workflow) {
-    $workflows[$key] = $workflow->name;
+    $workflows[$key] = $workflow->label;
   }
 
   return $workflows;
@@ -1201,22 +1199,24 @@ function workflow_get_state_labels($workflow_name = NULL, $all = FALSE) {
  *
  * @param $name
  *   The machine name of the workflow state.
- * @param $inactive
- *   Boolean to indicate to also return inactive states. Defaults to TRUE.
+ * @param $active_only
+ *   Boolean to indicate to only return active states. Defaults to FALSE.
  * @return
  *   The workflow state object.
  */
-function workflow_get_state($name, $inactive = TRUE) {
+function workflow_get_state($name, $active_only = FALSE) {
   $sql = "SELECT * FROM {workflow_states} WHERE name = '%s'";
 
-  if (!$inactive) {
+  if ($active_only) {
     $sql .= " AND status = 1";
   }
   
   $result = db_query($sql, $name);
   // State IDs are unique, so there should be only one row.
-  $state = db_fetch_object($result);
-  $state->label = check_plain(t($state->label));
+  if ($state = db_fetch_object($result)) {
+    $state->label = check_plain(t($state->label));
+  }
+
   return $state;
 }
 

@@ -1,4 +1,4 @@
-; $Id: workflow_access.info,v 1.2 2008/04/02 16:44:07 jvandyk Exp $
+; $Id: workflow_access.info,v 1.2.4.1 2010/08/27 19:37:49 q0rban Exp $
 name = Workflow access
 description = Content access control based on workflows and roles.
 dependencies[] = workflow
