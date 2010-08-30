@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.install,v 1.13.2.3.2.1 2010/08/27 19:37:49 q0rban Exp $
+// $Id: workflow.install,v 1.13.2.3.2.2 2010/08/30 14:45:49 q0rban Exp $
 
 /**
  * Implementation of hook_install().
@@ -519,7 +519,12 @@ function workflow_update_6202(&$sandbox = NULL) {
   $result = db_query("SELECT * FROM {workflow_states} WHERE sid > %d ORDER BY sid ASC LIMIT 100", $sandbox['current_sid']);
   while ($obj = db_fetch_object($result)) {
     // Create a new machine name for existing states.
-    $name = _workflow_update_6200_name_gen($obj->label, $obj->sid);
+    if ($obj->label == t('(creation)')) {
+      $name = _workflow_creation_state($obj->workflow_name);
+    }
+    else {
+      $name = _workflow_update_6200_name_gen($obj->label, $obj->sid);
+    }
     $sql = "UPDATE {workflow_states} SET name = '%s' WHERE sid = %d";
     $success = db_query($sql, $name, $obj->sid);
     $ret[] = array('success' => $success !== FALSE, 'query' => check_plain($sql));
