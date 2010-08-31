@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.module,v 1.83.2.14.2.3 2010/08/30 21:44:26 q0rban Exp $
+// $Id: workflow.module,v 1.83.2.14.2.4 2010/08/31 16:02:51 q0rban Exp $
 
 /**
  * @file
@@ -53,6 +53,29 @@ function workflow_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('workflow_edit_form', 4),
     'file' => 'workflow.admin.inc',
+  );
+  $items['admin/build/workflow/edit/%workflow/info'] = array(
+    'title' => 'Edit',
+    'weight' => -10,
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+  $items['admin/build/workflow/edit/%workflow/states'] = array(
+    'title' => 'States',
+    'weight' => 0,
+    'access arguments' => array('administer workflow'),
+    'page callback' => 'workflow_states',
+    'page arguments' => array(4),
+    'file' => 'workflow.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  $items['admin/build/workflow/edit/%workflow/transitions'] = array(
+    'title' => 'Transitions',
+    'weight' => 1,
+    'access arguments' => array('administer workflow'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('workflow_transition_grid_form', 4),
+    'file' => 'workflow.admin.inc',
+    'type' => MENU_LOCAL_TASK,
   );
   $items['admin/build/workflow/list'] = array(
     'title' => 'List',
@@ -130,7 +153,7 @@ function workflow_node_tab_access($node = NULL) {
  */
 function workflow_theme() {
   return array(
-    'workflow_edit_form' => array(
+    'workflow_transition_grid_form' => array(
       'arguments' => array(
         'form' => array(),
       ),
@@ -859,6 +882,7 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  */
 function workflow_load($name) {
   $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE name = '%s'", $name));
+  $workflow->label = check_plain(t($workflow->label));
   $workflow->options = unserialize($workflow->options);
   return $workflow;
 }
@@ -1103,6 +1127,8 @@ function workflow_create($workflow) {
  *   The updated workflow object.
  */
 function workflow_update($workflow) {
+  $workflow = (object) $workflow;
+  $workflow->tab_roles = is_array($workflow->tab_roles) ? implode(',', $workflow->tab_roles) : $workflow->tab_roles;
   $workflow = drupal_write_record('workflows', $workflow, 'wid');
 
   // Workflow name change affects tabs (local tasks), so force menu rebuild.

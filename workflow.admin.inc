@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.3.2.3 2010/08/30 21:44:26 q0rban Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.4 2010/08/31 16:02:51 q0rban Exp $
 
 /**
  * @file
@@ -76,7 +76,7 @@ function workflow_add_form_submit($form, &$form_state) {
   if ($workflow = workflow_create($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
     drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.', array('%label' => $workflow->label)), 'status');
-    $form_state['redirect'] = 'admin/build/workflow/edit/'. $workflow->name;
+    $form_state['redirect'] = 'admin/build/workflow/edit/'. $workflow->name .'/states';
   }
   else {
     watchdog('workflow', 'There was an error creating workflow %label', array('%label' => $values['label']), WATCHDOG_WARNING);
@@ -180,7 +180,7 @@ function theme_workflow_permissions($header, $all) {
  * @return
  *   HTML form and permissions table.
  */
-function workflow_edit_form($form_state, $workflow) {
+function workflow_edit_form(&$form_state, $workflow) {
   $form['#workflow'] = $workflow;
   $form['wid'] = array(
     '#type' => 'value',
@@ -192,7 +192,7 @@ function workflow_edit_form($form_state, $workflow) {
   );
   $form['basic'] = array(
     '#type' => 'fieldset',
-    '#title' => t('Workflow information')
+    '#title' => t('Workflow information'),
   );
   $form['basic']['label'] = array(
     '#type' => 'textfield',
@@ -231,76 +231,12 @@ function workflow_edit_form($form_state, $workflow) {
     '#description' => t('Select any roles that should have access to the workflow tab on nodes that have a workflow.'),
   );
 
-  $form['transitions'] = workflow_transition_grid_form($workflow->name);
-  $form['transitions']['#tree'] = TRUE;
-
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Save')
-  );
-
-  $form['permissions'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Permissions Summary'),
-    '#collapsible' => TRUE,
-  );
-  $form['permissions']['summary'] = array(
-    '#value' => workflow_permissions($workflow->name),
+    '#value' => t('Save'),
   );
 
   return $form;
-}
-
-/**
- * Theme the workflow editing form.
- *
- * @see workflow_edit_form()
- */
-function theme_workflow_edit_form($form) {
-  $output = drupal_render($form['label']);
-  $machine_name = $form['name']['#value'];
-  $states = workflow_get_states($machine_name);
-  drupal_set_title(t('Edit workflow %label', array('%label' => workflow_get_label($machine_name))));
-  if ($states) {
-    $roles = workflow_get_roles();
-    $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
-    $rows = array();
-    foreach ($states as $state_name => $state) {
-      // Don't allow transition TO (creation).
-      if (!workflow_is_system_state($state->label)) {
-        $header[] = array('data' => $state->label);
-      }
-      $row = array(array('data' => $state->label));
-      foreach ($states as $nested_state_name => $nested_state) {
-        if (workflow_is_system_state($nested_state->label)) {
-          // Don't allow transition TO (creation).
-          continue;
-        }
-        if ($nested_state_name != $state_name) {
-          // Need to render checkboxes for transition from $state to $nested_state.
-          $from = $state_name;
-          $to = $nested_state_name;
-          $cell = '';
-          foreach ($roles as $rid => $role_name) {
-            $cell .= drupal_render($form['transitions'][$from][$to][$rid]);
-          }
-          $row[] = array('data' => $cell);
-        }
-        else {
-          $row[] = array('data' => '');
-        }
-      }
-      $rows[] = $row;
-    }
-    $output .= theme('table', $header, $rows);
-
-  }
-  else {
-    $output = t('There are no states defined for this workflow.');
-  }
-
-  $output .= drupal_render($form);
-  return $output;
 }
 
 /**
@@ -308,13 +244,13 @@ function theme_workflow_edit_form($form) {
  *
  * @see workflow_edit_form()
  */
-function workflow_edit_form_validate($form_id, $form_state) {
+function workflow_edit_form_validate($form, &$form_state) {
   $machine_name = $form_state['values']['name'];
   // Make sure workflow name is not a duplicate.
-  if (array_key_exists('label', $form_state['values']) && $form_state['values']['label'] != '') {
+  if (!empty($form_state['values']['label'])) {
     $label = check_plain(t($form_state['values']['label']));
     foreach (workflow_get_all() as $name => $workflow) {
-      if ($name != $machine_name && $label == $workflow->label) {
+      if ($name != $machine_name && check_plain(t($label)) == $workflow->label) {
         form_set_error('label', t('A workflow with the label %label already exists. Please enter another label for this workflow.',
           array('%label' => $label)));
         break;
@@ -349,30 +285,33 @@ function workflow_edit_form_validate($form_id, $form_state) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_submit($form, &$form_state) {
-  if (isset($form_state['values']['transitions'])) {
-    workflow_update_transitions($form_state['values']['transitions']);
-  }
-
   workflow_update($form_state['values']);
   drupal_set_message(t('The workflow was updated.'));
-  $form_state['redirect'] = 'admin/build/workflow';
 }
 
 /**
  * Form builder. Build the grid of transitions for defining a workflow.
  *
- * @param $machine_name
- *   The machine name of the workflow.
+ * @param $workflow
+ *   The workflow object.
  */
-function workflow_transition_grid_form($machine_name) {
+function workflow_transition_grid_form(&$form_state, $workflow) {
   $form = array();
+  $form['#workflow'] = $workflow;
+
+  $form['transitions'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Transitions'),
+    '#collapsible' => TRUE,
+    '#tree' => TRUE,
+  );
 
   $roles = workflow_get_roles();
-  $states = workflow_get_states($machine_name);
-  if (!$states) {
+  $states = workflow_get_states($workflow->name);
+  if (empty($states)) {
     $form = array(
       '#type' => 'markup',
-      '#value' => t('There are no states defined for this workflow.')
+      '#value' => t('There are no states defined for this workflow.'),
     );
     return $form;
   }
@@ -388,7 +327,7 @@ function workflow_transition_grid_form($machine_name) {
         $to = $nested_state_name;
         foreach ($roles as $rid => $role_name) {
           $tid = workflow_get_transition_id($from, $to);
-          $form[$from][$to][$rid] = array(
+          $form['transitions'][$from][$to][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
             '#default_value' => $tid ? workflow_transition_allowed($tid, $rid) : FALSE);
@@ -396,7 +335,88 @@ function workflow_transition_grid_form($machine_name) {
       }
     }
   }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+
+  $form['permissions'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Permissions Summary'),
+    '#collapsible' => TRUE,
+  );
+  $form['permissions']['summary'] = array(
+    '#value' => workflow_permissions($workflow->name),
+  );
+
   return $form;
+}
+
+/**
+ * Submit handler for the workflow editing form.
+ *
+ * @see workflow_edit_form()
+ */
+function workflow_transition_grid_form_submit($form, &$form_state) {
+  workflow_update_transitions($form_state['values']['transitions']);
+
+  drupal_set_message(t('The workflow transitions were updated.'));
+}
+
+/**
+ * Theme the workflow transitions form.
+ *
+ * @see workflow_edit_form()
+ */
+function theme_workflow_transition_grid_form($form) {
+  $machine_name = $form['#workflow']->name;
+  $states = workflow_get_states($machine_name);
+  drupal_set_title(t('Edit Workflow %label Transitions', array('%label' => workflow_get_label($machine_name))));
+  $output = '';
+
+  if ($states) {
+    $roles = workflow_get_roles();
+    $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
+    $rows = array();
+    foreach ($states as $state_name => $state) {
+      // Don't allow transition TO (creation).
+      if (!workflow_is_system_state($state->label)) {
+        $header[] = array('data' => $state->label);
+      }
+      $row = array(array('data' => $state->label));
+      foreach ($states as $nested_state_name => $nested_state) {
+        if (workflow_is_system_state($nested_state->label)) {
+          // Don't allow transition TO (creation).
+          continue;
+        }
+        if ($nested_state_name != $state_name) {
+          // Need to render checkboxes for transition from $state to $nested_state.
+          $from = $state_name;
+          $to = $nested_state_name;
+          $cell = '';
+          foreach ($roles as $rid => $role_name) {
+            $cell .= drupal_render($form['transitions'][$from][$to][$rid]);
+          }
+          $row[] = array('data' => $cell);
+        }
+        else {
+          $row[] = array('data' => '');
+        }
+      }
+      $rows[] = $row;
+    }
+    $form['transitions']['#children'] .= theme('table', $header, $rows);
+  }
+  else {
+    $output = t('There are no states defined for this workflow.');
+  }
+
+  // Pop the submit button in the transitions fieldset.
+  $form['transitions']['#children'] .= drupal_render($form['submit']);
+
+  $output .= drupal_render($form);
+  return $output;
 }
 
 /**
@@ -430,7 +450,7 @@ function workflow_overview() {
     $row[] = array($workflow->label, theme('links', $links));
 
     // This calls up workflow_states_form. @see workflow_forms().
-    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name);
+    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name, TRUE);
     $row[] = array(array('data' => $states_form, 'colspan' => '2'));
   }
 
@@ -446,15 +466,34 @@ function workflow_overview() {
 }
 
 /**
+ * Page callback for the Workflow States tab.
+ */
+function workflow_states($workflow) {
+  return drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name);
+}
+
+/**
  * Form to re-order and create states for a specific workflow.
  *
  * @param $workflow_name
  *   The machine name of the states' workflow.
+ * @param $collapsed
+ *   If this form should be inside a collapsed fieldset.
  */
-function workflow_states_form(&$form_state, $workflow_name) {
+function workflow_states_form(&$form_state, $workflow_name, $collapsed = FALSE) {
   $form = array();
 
   $form['#states'] = $states = workflow_get_states($workflow_name);
+
+  if ($collapsed) {
+    $form['states'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('States'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+  }
+
   $form['states']['#tree'] = TRUE;
 
   foreach ($states as $state_name => $state) {
@@ -606,7 +645,6 @@ function theme_workflow_states_form($form) {
     // Render the hidden 'sid' field and the title of the record into the same 
     // column of the row, keeping in mind that 'sid' may be empty.
     $sid = empty($state_form['sid']) ? '' : drupal_render($state_form['sid']);
-    unset($state_form['label']['#title']);
     $cols[] = $sid . drupal_render($state_form['label']);
 
     // If the weight field isn't disabled, add an identifying CSS class to it, 
@@ -637,8 +675,9 @@ function theme_workflow_states_form($form) {
   // elements (like buttons) will appear properly at the bottom of the form.
   $id = $form['#id'] .'-table';
   $header = array(t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
-  $output = theme('table', $header, $rows, array('id' => $id));
-  $output .= drupal_render($form);
+  $form['states']['#children'] .= theme('table', $header, $rows, array('id' => $id));
+  $form['states']['#children'] .= drupal_render($form['buttons']['submit']);
+  $output = drupal_render($form);
 
   // Now that we've built our output, tell Drupal to add the tabledrag.js library.
   // We'll pass in the ID of the table, the behavior we want it to use, and the
@@ -755,7 +794,6 @@ function workflow_states_form_submit($form, &$form_state) {
       }
     }
   }
-  $form_state['redirect'] = 'admin/build/workflow';
 }
 
 /**

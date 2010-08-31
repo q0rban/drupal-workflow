@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow_access.module,v 1.6.4.3 2010/08/31 14:16:45 q0rban Exp $
+// $Id: workflow_access.module,v 1.6.4.4 2010/08/31 16:02:51 q0rban Exp $
 
 /**
  * @file 
@@ -81,12 +81,11 @@ function workflow_access_form(&$form_state, $workflow) {
   // Add a table for every workflow state.
   $states = workflow_get_state_labels($workflow->name);
   foreach ($states as $state_name => $label) {
-    
     if (workflow_is_system_state($label)) {
       // No need to set perms on creation.
       continue;
     }
-        
+
     $view = $update = $delete = array();
 
     $result = db_query("SELECT * from {workflow_access} where state_name = '%s'", $state_name);
@@ -140,6 +139,14 @@ function workflow_access_form(&$form_state, $workflow) {
       '#prefix' => "</td><td>",
       '#suffix' => "</td></tr></tbody></table>",
     );
+  }
+
+  if (count(element_children($form['workflow_access'])) == 0) {
+    $form['workflow_access'] = array(
+      '#type' => 'markup',
+      '#value' => t('There are no states defined for this workflow.'),
+    );
+    return $form;
   }
 
   $form['submit'] = array(
