@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.3.2.4 2010/08/31 16:02:51 q0rban Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.5 2010/08/31 20:28:39 q0rban Exp $
 
 /**
  * @file
@@ -249,7 +249,7 @@ function workflow_edit_form_validate($form, &$form_state) {
   // Make sure workflow name is not a duplicate.
   if (!empty($form_state['values']['label'])) {
     $label = check_plain(t($form_state['values']['label']));
-    foreach (workflow_get_all() as $name => $workflow) {
+    foreach (workflow_load_all() as $name => $workflow) {
       if ($name != $machine_name && check_plain(t($label)) == $workflow->label) {
         form_set_error('label', t('A workflow with the label %label already exists. Please enter another label for this workflow.',
           array('%label' => $label)));
@@ -307,7 +307,7 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
   );
 
   $roles = workflow_get_roles();
-  $states = workflow_get_states($workflow->name);
+  $states = $workflow->states;
   if (empty($states)) {
     $form = array(
       '#type' => 'markup',
@@ -371,7 +371,7 @@ function workflow_transition_grid_form_submit($form, &$form_state) {
  */
 function theme_workflow_transition_grid_form($form) {
   $machine_name = $form['#workflow']->name;
-  $states = workflow_get_states($machine_name);
+  $states = $form['#workflow']->states;
   drupal_set_title(t('Edit Workflow %label Transitions', array('%label' => workflow_get_label($machine_name))));
   $output = '';
 
@@ -426,7 +426,7 @@ function theme_workflow_transition_grid_form($form) {
 function workflow_overview() {
   $row = array();
 
-  foreach (workflow_get_all() as $workflow_name => $workflow) {
+  foreach (workflow_load_all() as $workflow_name => $workflow) {
     $links = array(
       'workflow_overview_actions' => array(
         'title' => t('Actions'),
@@ -443,14 +443,14 @@ function workflow_overview() {
     $links = array_merge($links, module_invoke_all('workflow_operations', 'workflow', $workflow->name));
     // Remove the Actions link if Trigger is not enabled or the Workflow has 
     // less than 2 states.
-    if (!module_exists('trigger') || count(workflow_get_states($workflow_name)) < 2) {
+    if (!module_exists('trigger') || count($workflow->states) < 2) {
       unset($links['workflow_overview_actions']);
     }
 
     $row[] = array($workflow->label, theme('links', $links));
 
     // This calls up workflow_states_form. @see workflow_forms().
-    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name, TRUE);
+    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow, TRUE);
     $row[] = array(array('data' => $states_form, 'colspan' => '2'));
   }
 
@@ -469,21 +469,21 @@ function workflow_overview() {
  * Page callback for the Workflow States tab.
  */
 function workflow_states($workflow) {
-  return drupal_get_form('workflow_states_form_'. $workflow->name, $workflow->name);
+  return drupal_get_form('workflow_states_form_'. $workflow->name, $workflow);
 }
 
 /**
  * Form to re-order and create states for a specific workflow.
  *
- * @param $workflow_name
- *   The machine name of the states' workflow.
+ * @param $workflow
+ *   The workflow object.
  * @param $collapsed
  *   If this form should be inside a collapsed fieldset.
  */
-function workflow_states_form(&$form_state, $workflow_name, $collapsed = FALSE) {
+function workflow_states_form(&$form_state, $workflow, $collapsed = FALSE) {
   $form = array();
 
-  $form['#states'] = $states = workflow_get_states($workflow_name);
+  $form['#states'] = $states = $workflow->states;
 
   if ($collapsed) {
     $form['states'] = array(
@@ -497,11 +497,11 @@ function workflow_states_form(&$form_state, $workflow_name, $collapsed = FALSE) 
   $form['states']['#tree'] = TRUE;
 
   foreach ($states as $state_name => $state) {
-    $form['states'][$state_name] = _workflow_state_edit_form($form_state, $workflow_name, $state);
+    $form['states'][$state_name] = _workflow_state_edit_form($form_state, $state);
   }
 
   // Now add an empty state form.
-  $form['states'][] = _workflow_state_create_form(&$form_state, $workflow_name);
+  $form['states'][] = _workflow_state_create_form(&$form_state, $workflow->name);
 
   $form['buttons']['submit'] = array(
     '#type' => 'submit',
@@ -512,7 +512,7 @@ function workflow_states_form(&$form_state, $workflow_name, $collapsed = FALSE) 
   // manually specify some FAPI stuff.
   $form['buttons']['submit']['#submit'] = array('workflow_states_form_submit');
   $form['#validate'] = array('workflow_states_form_validate');
-  $form['#theme'] = array('workflow_states_form_'. $workflow_name, 'workflow_states_form');
+  $form['#theme'] = array('workflow_states_form_'. $workflow->name, 'workflow_states_form');
 
   return $form;
 }
@@ -523,18 +523,16 @@ function workflow_states_form(&$form_state, $workflow_name, $collapsed = FALSE) 
  * This internal function should not be called outside the module, unless you're
  * feeling particularly cheeky.
  *
- * @param $workflow_name
- *   The machine name of the workflow.
  * @param $state
  *   The existing state object.
  * @return
  *   Form array.
  */
-function _workflow_state_edit_form(&$form_state, $workflow_name, $state) {
+function _workflow_state_edit_form(&$form_state, $state) {
   $form['#state'] = $state;
   $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $workflow_name,
+    '#value' => $state->name,
   );
   $form['sid'] = array(
     '#type' => 'value',
@@ -886,7 +884,7 @@ function workflow_state_delete_form_submit($form, &$form_state) {
  */
 function workflow_types_form() {
   $form = array();
-  $workflows = workflow_get_all_labels();
+  $workflows = workflow_load_all_labels();
   if (count($workflows) == 0) {
     return $form;
   }

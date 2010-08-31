@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.rules_forms.inc,v 1.1.2.1.2.1 2010/08/27 19:37:49 q0rban Exp $
+// $Id: workflow.rules_forms.inc,v 1.1.2.1.2.2 2010/08/31 20:28:39 q0rban Exp $
 
 /**
  * @file
@@ -12,9 +12,9 @@
 function workflow_check_transition_form($settings, &$form) {
   $options = array();
   $options['ANY'] = t('Any state');
-  foreach (workflow_get_all() as $workflow) {
+  foreach (workflow_load_all() as $workflow) {
     $options[$workflow->name] = array();
-    foreach (workflow_get_states($workflow->name) as $name => $state) {
+    foreach ($workflow->states as $name => $state) {
       $options[$workflow->name][$name] = $state->label;
     }
   }

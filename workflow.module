@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.module,v 1.83.2.14.2.4 2010/08/31 16:02:51 q0rban Exp $
+// $Id: workflow.module,v 1.83.2.14.2.5 2010/08/31 20:28:39 q0rban Exp $
 
 /**
  * @file
@@ -210,7 +210,7 @@ function workflow_theme() {
  */
 function workflow_forms() {
   $forms = array();
-  foreach (workflow_get_all() as $workflow_name => $workflow) {
+  foreach (workflow_load_all() as $workflow_name => $workflow) {
     $forms['workflow_states_form_'. $workflow_name]['callback'] = 'workflow_states_form';
   }
   return $forms;
@@ -477,7 +477,6 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
 
     $choices = workflow_field_choices($node);
     $name = workflow_get_workflow_for_type($node->type);
-    $states = workflow_get_states($name);
 
     // If this is a preview, the current state should come from the form values,
     // not the node, as the user may have changed the state.
@@ -881,10 +880,76 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  *   Object representing the workflow.
  */
 function workflow_load($name) {
-  $workflow = db_fetch_object(db_query("SELECT * FROM {workflows} WHERE name = '%s'", $name));
-  $workflow->label = check_plain(t($workflow->label));
-  $workflow->options = unserialize($workflow->options);
-  return $workflow;
+  $workflows = workflow_load_all();
+
+  return empty($workflows[$name]) ? FALSE : $workflows[$name];
+}
+
+/**
+ * Get all workflows.
+ *
+ * @param $reset
+ *   Boolean to clear the cached workflows.
+ * @return
+ *   An array of workflows.
+ */
+function workflow_load_all($reset = FALSE) {
+  static $workflows;
+
+  if (is_null($workflows) || $reset) {
+    // See if we have a populated cache first.
+    if (!$reset && $cache = cache_get('workflows')) {
+      $workflows = $cache->data;
+      return $workflows;
+    }
+
+    $workflows = array();
+
+    // Load all workflows from the database.
+    $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
+    while ($workflow = db_fetch_object($result)) {
+      // Sanitize the label.
+      $workflow->label = check_plain(t($workflow->label));
+      // Unserialize the options.
+      $workflow->options = unserialize($workflow->options);
+      // Load up the states.
+      $workflow->states = workflow_get_states($workflow->name);
+      $workflows[$workflow->name] = $workflow;
+    }
+
+    // Load up any workflows from code and save them to the database.
+    foreach (module_invoke_all('workflow_default_workflows') as $workflow) {
+      if (empty($workflows[$workflow->name])) {
+        $workflow = workflow_create($workflow);
+        $workflows[$workflow->name] = $workflow;
+      }
+    }
+
+    drupal_alter('workflows', $workflows);
+    cache_set('workflows', $workflows);
+  }
+
+  return $workflows;
+}
+
+/**
+ * Get all workflow labels.
+ *
+ * @return
+ *   An array of workflow names.
+ */
+function workflow_load_all_labels() {
+  static $labels;
+
+  if (is_null($labels)) {
+    $labels = array();
+
+    foreach (workflow_load_all() as $key => $workflow) {
+      $labels[$key] = $workflow->label;
+    }
+  }
+
+  return $labels;
 }
 
 /**
@@ -1049,46 +1114,6 @@ function workflow_get_workflow_for_type($type) {
 }
 
 /**
- * Get all workflows.
- *
- * @param $reset
- *   Boolean to clear the static cache.
- * @return
- *   An array of workflows.
- */
-function workflow_get_all($reset = FALSE) {
-  static $workflows;
-
-  if (is_null($workflows) || $reset) {
-    $workflows = array();
-
-    $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
-    while ($data = db_fetch_object($result)) {
-      $data->label = check_plain(t($data->label));
-      $workflows[$data->name] = $data;
-    }
-  }
-
-  return $workflows;
-}
-
-/**
- * Get all workflow labels.
- *
- * @return
- *   An array of workflow names.
- */
-function workflow_get_all_labels() {
-  $workflows = workflow_get_all();
-
-  foreach ($workflows as $key => $workflow) {
-    $workflows[$key] = $workflow->label;
-  }
-
-  return $workflows;
-}
-
-/**
  * Create a workflow and its (creation) state.
  *
  * @param $workflow
@@ -1103,14 +1128,20 @@ function workflow_create($workflow) {
   $workflow = (object) $workflow;
 
   if (drupal_write_record('workflows', $workflow)) {
-    $state = array(
-      'name' => _workflow_creation_state($workflow->name),
-      'workflow_name' => $workflow->name,
-      'label' => t('(creation)'),
-      'sysid' => WORKFLOW_CREATION,
-      'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT,
-    );
-    workflow_state_save($state);
+    if (empty($workflow->states)) {
+      $state = array(
+        'name' => _workflow_creation_state($workflow->name),
+        'workflow_name' => $workflow->name,
+        'label' => t('(creation)'),
+        'sysid' => WORKFLOW_CREATION,
+        'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT,
+      );
+      workflow_state_save($state);
+    }
+    else {
+      // Save each workflow state.
+      array_walk($workflow->states, 'workflow_state_save');
+    }
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     menu_rebuild();
   }
@@ -1668,7 +1699,7 @@ function workflow_token_values($type, $object = NULL) {
         $workflow = workflow_load($machine_name);
         $values['workflow-name'] = $workflow->label;
         $values['workflow-machine-name'] = $machine_name;
-        $states = workflow_get_states($machine_name);
+        $states = $workflow->states;
       }
       else {
         break;
