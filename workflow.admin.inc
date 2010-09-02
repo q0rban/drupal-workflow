@@ -1,5 +1,5 @@
 <?php
-// $Id: workflow.admin.inc,v 1.7.2.3.2.5 2010/08/31 20:28:39 q0rban Exp $
+// $Id: workflow.admin.inc,v 1.7.2.3.2.6 2010/09/02 21:13:18 q0rban Exp $
 
 /**
  * @file
@@ -26,7 +26,7 @@ function workflow_add_form(&$form_state) {
   );
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Add Workflow')
+    '#value' => t('Add Workflow'),
   );
   return $form;
 }
@@ -448,10 +448,6 @@ function workflow_overview() {
     }
 
     $row[] = array($workflow->label, theme('links', $links));
-
-    // This calls up workflow_states_form. @see workflow_forms().
-    $states_form = drupal_get_form('workflow_states_form_'. $workflow->name, $workflow, TRUE);
-    $row[] = array(array('data' => $states_form, 'colspan' => '2'));
   }
 
   if ($row) {
@@ -477,23 +473,11 @@ function workflow_states($workflow) {
  *
  * @param $workflow
  *   The workflow object.
- * @param $collapsed
- *   If this form should be inside a collapsed fieldset.
  */
-function workflow_states_form(&$form_state, $workflow, $collapsed = FALSE) {
+function workflow_states_form(&$form_state, $workflow) {
   $form = array();
 
   $form['#states'] = $states = $workflow->states;
-
-  if ($collapsed) {
-    $form['states'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('States'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
-    );
-  }
-
   $form['states']['#tree'] = TRUE;
 
   foreach ($states as $state_name => $state) {
@@ -562,7 +546,6 @@ function _workflow_state_edit_form(&$form_state, $state) {
   else {
     $form['label'] = array(
       '#type'  => 'textfield',
-      '#title' => t('State label'),
       '#default_value' => empty($state->label) ? '' : $state->label,
       '#size'  => '16',
       '#maxlength' => '254',
