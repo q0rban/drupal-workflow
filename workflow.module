@@ -19,7 +19,7 @@ define('WORKFLOW_ARROW', '&#8594;');
  */
 function workflow_help($path, $arg) {
   switch ($path) {
-    case 'admin/build/workflow/edit/%':
+    case 'admin/build/workflow/edit/%/transitions':
       return t('You are currently viewing the possible transitions to and from workflow states. The state is shown in the left column; the state to be moved to is to the right. For each transition, check the box next to the role(s) that may initiate the transition. For example, if only the "production editor" role may move a node from Review state to the Published state, check the box next to "production editor". The author role is built in and refers to the user who authored the node.');
     case 'admin/build/workflow/add':
       return t('To get started, provide a name for your workflow. This name will be used as a label when the workflow status is shown during node editing.');
