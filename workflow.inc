@@ -59,7 +59,7 @@ function workflow_load_all($reset = FALSE) {
       $workflow->options = unserialize($workflow->options);
 
       // Load up the states and node types.
-      $workflow->states = workflow_get_states($workflow->name);
+      $workflow->states = workflow_get_db_states($workflow->name);
       $workflow->node_types = workflow_get_types($workflow->name);
       $workflow->export_type = WORKFLOW_IN_DATABASE; // 0001
       $workflows[$workflow->name] = $workflow;
@@ -246,8 +246,8 @@ function workflow_is_system_state($state) {
  *   The workflow label.
  */
 function workflow_get_label($name) {
-  $label = db_result(db_query("SELECT label FROM {workflows} WHERE name = '%s'", $name));
-  return check_plain(t($label));
+  $workflow = workflow_load($name);
+  return $workflow->label;
 }
 
 /**
@@ -371,9 +371,41 @@ function workflow_deletewf($name) {
 }
 
 /**
- * Load workflow states for a workflow from the database. If $machine_name is 
- * not passed, all states for all workflows are given. States that have been 
- * deleted are not included.
+ * Load all database and code workflow states. If $workflow_name is not passed,
+ * all states for all workflows are given.
+ *
+ * @param $workflow_name
+ *   The machine name of the workflow.
+ * @return
+ *   An array of workflow states.
+ */
+function workflow_get_states($workflow_name = NULL) {
+  $workflows = workflow_load_all();
+
+  if (is_null($workflow_name)) {
+    static $all_states;
+
+    if (is_null($all_states)) {
+      $all_states = array();
+      foreach ($workflows as $workflow) {
+        $states = $workflow->states;
+        foreach ($states as $name => $state) {
+          $state->label = $workflow->label .': '. $state->label;
+          $all_states[$name] = $state;
+        }
+      }
+    }
+
+    return $all_states;
+  }
+
+  return $workflows[$workflow_name]->states;
+}
+
+/**
+ * Load workflow states for a workflow from the database. If $workflow_name is
+ * not passed, all states for all workflows are given. States that have been
+ * deleted are not included unless $all is TRUE.
  *
  * @param $workflow_name
  *   The machine name of the workflow.
@@ -382,60 +414,18 @@ function workflow_deletewf($name) {
  * @return
  *   An array of workflow states.
  */
-function workflow_get_states($workflow_name = NULL, $all = FALSE) {
-  $states = array();
+function workflow_get_db_states($workflow_name = NULL, $all = FALSE) {
+  $states = $query_args = array();
+  $schema = drupal_get_schema('workflow_states');
 
-  // If $all is TRUE and we have no workflow name, $type is 'all'.
-  $type = ($all && is_null($workflow_name)) ? 'all' : 'conditions';
+  // Build up an array of WHERE clause arguments.
   $args = $all ? array() : array('status' => 1);
-
   if (isset($workflow_name)) {
     $args['workflow_name'] = $workflow_name;
   }
 
-  if (module_exists('ctools')) {
-    ctools_include('export');
-
-    $records = ctools_export_load_object('workflow_states', $type, $args);
-  }
-  else {
-    $records = _workflow_get_db_states($type, $args);
-  }
-
-  foreach ($records as $state => $data) {
-    $data->label = check_plain(t($data->label));
-    $records[$state] = $data;
-  }
-
-  // Sort the records by weight and then title.
-  uasort($records, '_workflow_states_compare');
-
-  return $records;
-}
-
-/**
- * Helper function to compare two workflow states by weight and then title.
- */
-function _workflow_states_compare($a, $b) {
-  // Sort by weight.
-  $weight = $a->weight - $b->weight;
-  if ($weight) {
-    return $weight;
-  }
-  // Sort by title.
-  return strcmp($a->label, $b->label);
-}
-
-/**
- * Helper function to load up Workflow States from the database in a similar
- * manner to ctools_export_load_object().
- */
-function _workflow_get_db_states($type, $args = array()) {
-  $schema = drupal_get_schema('workflow_states');
-  $states = $query_args = array();
-
+  // Construct the query.
   $query = "SELECT * FROM {workflow_states}";
-
   if (!empty($args)) {
     $conditions = array();
     foreach ($args as $key => $value) {
@@ -444,15 +434,18 @@ function _workflow_get_db_states($type, $args = array()) {
         $query_args[] = $value;
       }
     }
+    // Create the WHERE clause.
     $query .= " WHERE " . implode(' AND ', $conditions);
   }
+  $query .= " ORDER BY weight, label";
 
   $result = db_query($query, $query_args);
-
   while ($data = db_fetch_object($result)) {
     $data->label = check_plain(t($data->label));
 
-    if (empty($args['workflow_name'])) {
+    // If we don't have a workflow_name, load up the associated workflow and
+    // prepend the Workflow Label to the State Label.
+    if (empty($workflow_name)) {
       $workflow = workflow_load($data->workflow_name);
       $data->label = $workflow->label .': '. $data->label;
     }
@@ -464,19 +457,17 @@ function _workflow_get_db_states($type, $args = array()) {
 }
 
 /**
- * Load workflow state names for a workflow from the database. If $workflow_name 
- * is not passed, all states for all workflows are given. States that have been 
- * deleted are not included.
+ * Load workflow state labels for a workflow. If $workflow_name is not passed,
+ * all states for all workflows are given. States that have been deleted are not
+ * included.
  *
  * @param $workflow_name
  *   The machine name of the workflow.
- * @param $all
- *   If TRUE, will return all workflows, regardless of status.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_state_labels($workflow_name = NULL, $all = FALSE) {
-  $states = workflow_get_states($workflow_name, $all);
+function workflow_get_state_labels($workflow_name = NULL) {
+  $states = workflow_get_states($workflow_name);
 
   foreach ($states as $name => $state) {
     $states[$name] = $state->label;
