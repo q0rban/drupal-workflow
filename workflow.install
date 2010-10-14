@@ -54,6 +54,18 @@ function workflow_schema() {
       'target_state_name' => array('target_state_name')),
   );
   $schema['workflow_states'] = array(
+    'export' => array(
+      'key name' => 'Machine Name',
+      'primary key' => 'sid',
+      'identifier' => 'workflow_state',
+      'default hook' => 'workflow_default_states',
+      'api' => array(
+        'owner' => 'workflow',
+        'api' => 'workflow_default_states',
+        'minimum version' => 2,
+        'current version' => 2,
+      ),
+    ),
     'fields' => array(
       'sid'           => array('type' => 'serial', 'not null' => TRUE),
       'name'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),

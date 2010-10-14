@@ -344,29 +344,92 @@ function workflow_deletewf($name) {
 function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   $states = array();
 
+  $type = 'conditions';
+  $args = array();
   if (isset($workflow_name) && $all) {
+    $args = array('workflow_name' => $workflow_name);
     $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' ORDER BY weight, label";
     $result = db_query($query, $workflow_name);
   }
   else if (isset($workflow_name)) {
+    $args = array('workflow_name' => $workflow_name, 'status' => 1);
     $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, label";
     $result = db_query($query, $workflow_name);
   }
   else if ($all) {
-    $query = "SELECT * FROM {workflow_states} ORDER BY weight, label";
-    $result = db_query($query);
+    $type = 'all';
   }
   else {
+    $args = array('status' => 1);
     $query = "SELECT * FROM {workflow_states} WHERE status = 1 ORDER BY weight, label";
     $result = db_query($query);
   }
 
+  if (module_exists('ctools')) {
+    ctools_include('export');
+
+    $records = ctools_export_load_object('workflow_states', $type, $args);
+  }
+  else {
+    $records = _workflow_get_db_states($type, $args);
+  }
+
+  foreach ($records as $state => $data) {
+    $data->label = check_plain(t($data->label));
+    $records[$state] = $data;
+  }
+
+  // Sort the records by weight and then title.
+  uasort($records, '_workflow_states_compare');
+
+  dsm($records);
+  return $records;
+}
+
+/**
+ * Helper function to compare two workflow states by weight and then title.
+ */
+function _workflow_states_compare($a, $b) {
+  // Sort by weight.
+  $weight = $a->weight - $b->weight;
+  if ($weight) {
+    return $weight;
+  }
+  // Sort by title.
+  return strcmp($a->label, $b->label);
+}
+
+/**
+ * Helper function to load up Workflow States from the database in a similar
+ * manner to ctools_export_load_object().
+ */
+function _workflow_get_db_states($type, $args = array()) {
+  $schema = drupal_get_schema('workflow_states');
+  $states = $query_args = array();
+
+  $query = "SELECT * FROM {workflow_states}";
+
+  if (!empty($args)) {
+    $conditions = array();
+    foreach ($args as $key => $value) {
+      if (isset($schema['fields'][$key])) {
+        $conditions[] = "$key = " . db_type_placeholder($schema['fields'][$key]['type']);
+        $query_args[] = $value;
+      }
+    }
+    $query .= " WHERE " . implode(' AND ', $conditions);
+  }
+
+  $result = db_query($query, $query_args);
+
   while ($data = db_fetch_object($result)) {
-    if (is_null($workflow_name)) {
+    $data->label = check_plain(t($data->label));
+
+    if (empty($args['workflow_name'])) {
       $workflow = workflow_load($data->workflow_name);
       $data->label = $workflow->label .': '. $data->label;
     }
-    $data->label = check_plain(t($data->label));
+
     $states[$data->name] = $data;
   }
 
