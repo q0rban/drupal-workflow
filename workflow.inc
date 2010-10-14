@@ -7,6 +7,16 @@
  */
 
 /**
+ * A bit flag used to let us know if an object is in the database.
+ */
+define('WORKFLOW_IN_DATABASE', 0x01);
+
+/**
+ * A bit flag used to let us know if an object is a 'default' in code.
+ */
+define('WORKFLOW_IN_CODE', 0x02);
+
+/**
  * Load function.
  *
  * @param $name
@@ -47,8 +57,11 @@ function workflow_load_all($reset = FALSE) {
       $workflow->label = check_plain(t($workflow->label));
       // Unserialize the options.
       $workflow->options = unserialize($workflow->options);
-      // Load up the states.
+
+      // Load up the states and node types.
       $workflow->states = workflow_get_states($workflow->name);
+      $workflow->node_types = workflow_get_types($workflow->name);
+      $workflow->export_type = WORKFLOW_IN_DATABASE; // 0001
       $workflows[$workflow->name] = $workflow;
     }
 
@@ -58,10 +71,16 @@ function workflow_load_all($reset = FALSE) {
 
     foreach ($default_workflows as $workflow) {
       if (empty($workflows[$workflow->name])) {
-        $workflow = workflow_create($workflow);
+        $workflow->export_type = WORKFLOW_IN_CODE; // 0010
         $workflows[$workflow->name] = $workflow;
       }
+      else {
+        // Sets export_type to 0011 (Overridden).
+        $workflow->export_type |= WORKFLOW_IN_CODE;
+      }
     }
+
+    dsm($workflows);
 
     cache_set('workflows', $workflows);
   }
@@ -221,14 +240,36 @@ function workflow_is_system_state($state) {
 /**
  * Given the machine name of a workflow, return its label.
  *
- * @param string $name
+ * @param $name
  *   The machine name of the workflow.
- * @return string
- *   The name of the workflow.
+ * @return
+ *   The workflow label.
  */
 function workflow_get_label($name) {
   $label = db_result(db_query("SELECT label FROM {workflows} WHERE name = '%s'", $name));
   return check_plain(t($label));
+}
+
+/**
+ * Get all the node types for a workflow.
+ *
+ * @param $name
+ *   The machine name of the workflow
+ * @return
+ *   An array of node types for this workflow.
+ */
+function workflow_get_types($name) {
+  static $type_map;
+
+  if (empty($type_map)) {
+    $type_map = array();
+    $result = db_query("SELECT * FROM {workflow_type_map}");
+    while ($record = db_fetch_object($result)) {
+      $type_map[$record->workflow_name][] = $record->type;
+    }
+  }
+
+  return $type_map[$name];
 }
 
 /**
@@ -344,25 +385,12 @@ function workflow_deletewf($name) {
 function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   $states = array();
 
-  $type = 'conditions';
-  $args = array();
-  if (isset($workflow_name) && $all) {
-    $args = array('workflow_name' => $workflow_name);
-    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' ORDER BY weight, label";
-    $result = db_query($query, $workflow_name);
-  }
-  else if (isset($workflow_name)) {
-    $args = array('workflow_name' => $workflow_name, 'status' => 1);
-    $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' AND status = 1 ORDER BY weight, label";
-    $result = db_query($query, $workflow_name);
-  }
-  else if ($all) {
-    $type = 'all';
-  }
-  else {
-    $args = array('status' => 1);
-    $query = "SELECT * FROM {workflow_states} WHERE status = 1 ORDER BY weight, label";
-    $result = db_query($query);
+  // If $all is TRUE and we have no workflow name, $type is 'all'.
+  $type = ($all && is_null($workflow_name)) ? 'all' : 'conditions';
+  $args = $all ? array() : array('status' => 1);
+
+  if (isset($workflow_name)) {
+    $args['workflow_name'] = $workflow_name;
   }
 
   if (module_exists('ctools')) {
@@ -382,7 +410,6 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   // Sort the records by weight and then title.
   uasort($records, '_workflow_states_compare');
 
-  dsm($records);
   return $records;
 }
 
