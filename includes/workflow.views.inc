@@ -37,8 +37,8 @@ function workflow_views_data() {
   );
 
   // state
-  $data['workflow_states']['state'] = array(
-    'title' => t('Current state name'), // Appears in views UI.
+  $data['workflow_states']['label'] = array(
+    'title' => t('Current state label'), // Appears in views UI.
     'help' => t('The readable name of the workflow state that the node is in. (Less efficient, use only when click-sorting by state name.)'),
     'field' => array(
       'handler' => 'views_handler_field',
