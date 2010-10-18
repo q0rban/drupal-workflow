@@ -197,7 +197,7 @@ function workflow_views_data() {
 function workflow_views_handlers() {
   return array(
     'info' => array(
-      'path' => drupal_get_path('module', 'workflow') . '/includes',
+      'path' => drupal_get_path('module', 'workflow') . '/includes/handlers',
     ),
     'handlers' => array(
       // argument handlers
