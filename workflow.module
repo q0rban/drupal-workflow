@@ -760,6 +760,14 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  * Loads all necessary includes.
  */
 function workflow_include_files() {
-  module_load_include('inc', 'workflow');
-  module_load_include('inc', 'workflow', 'workflow.actions');
+  static $finished;
+
+  if (!$finished) {
+    $files = array('workflow', 'workflow.actions');
+    foreach ($files as $file) {
+      module_load_include('inc', 'workflow', 'includes/'. $file);
+    }
+
+    $finished = TRUE;
+  }
 }
