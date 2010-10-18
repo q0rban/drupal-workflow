@@ -75,7 +75,7 @@ function workflow_load_all($reset = FALSE) {
         $workflows[$workflow->name] = $workflow;
       }
       else {
-        // Sets export_type to 0011 (Overridden).
+        // Sets export_type to 0011 (In database and code, aka OVERRIDDEN).
         $workflow->export_type |= WORKFLOW_IN_CODE;
       }
     }
@@ -292,6 +292,21 @@ function workflow_get_workflow_for_type($type) {
 }
 
 /**
+ * Save mapping of workflow to node type. E.g., "the story node type is using
+ * the Foo workflow."
+ *
+ * @param $form_state['values']
+ */
+function workflow_types_save($form_values) {
+  db_query("DELETE FROM {workflow_type_map}");
+  $node_types = node_get_types();
+  foreach ($node_types as $type => $name) {
+    db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $form_values[$type]['workflow_name']);
+    variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
+  }
+}
+
+/**
  * Create a workflow and its (creation) state.
  *
  * @param $workflow
@@ -440,17 +455,19 @@ function workflow_get_db_states($workflow_name = NULL, $all = FALSE) {
   $query .= " ORDER BY weight, label";
 
   $result = db_query($query, $query_args);
-  while ($data = db_fetch_object($result)) {
-    $data->label = check_plain(t($data->label));
+  while ($state = db_fetch_object($result)) {
+    $state->label = check_plain(t($state->label));
 
     // If we don't have a workflow_name, load up the associated workflow and
     // prepend the Workflow Label to the State Label.
     if (empty($workflow_name)) {
-      $workflow = workflow_load($data->workflow_name);
-      $data->label = $workflow->label .': '. $data->label;
+      $workflow = workflow_load($state->workflow_name);
+      $state->label = $workflow->label .': '. $state->label;
     }
 
-    $states[$data->name] = $data;
+    $state->transitions = workflow_transitions_load($state->name);
+
+    $states[$state->name] = $state;
   }
 
   return $states;
@@ -579,6 +596,25 @@ function workflow_state_delete($name, $new_name = NULL) {
 }
 
 /**
+ * Load all transition records for a particular state.
+ *
+ * @param $from_state
+ *   The state machine name that is being transitioned FROM.
+ */
+function workflow_transitions_load($from_state) {
+  $transitions = array();
+  $result = db_query("SELECT target_state_name, roles FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
+
+  while ($transition = db_fetch_array($result)) {
+    // Pull out the target_state_name and roles values into vars.
+    extract($transition);
+    $transitions[$target_state_name] = explode(',', $roles);
+  }
+
+  return $transitions;
+}
+
+/**
  * Delete a transition (and any associated actions).
  *
  * @param $tid
@@ -592,21 +628,6 @@ function workflow_transition_delete($tid) {
   db_query("DELETE FROM {workflow_transitions} WHERE tid = %d", $tid);
   // Notify interested modules.
   module_invoke_all('workflow', 'transition delete', $tid, NULL, NULL);
-}
-
-/**
- * Save mapping of workflow to node type. E.g., "the story node type is using 
- * the Foo workflow."
- *
- * @param $form_state['values']
- */
-function workflow_types_save($form_values) {
-  db_query("DELETE FROM {workflow_type_map}");
-  $node_types = node_get_types();
-  foreach ($node_types as $type => $name) {
-    db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $form_values[$type]['workflow_name']);
-    variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
-  }
 }
 
 /**
