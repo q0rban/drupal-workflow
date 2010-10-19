@@ -763,7 +763,7 @@ function workflow_include_files() {
   static $finished;
 
   if (!$finished) {
-    $files = array('workflow', 'workflow.actions');
+    $files = array('workflow', 'workflow.actions', 'workflow.node');
     foreach ($files as $file) {
       module_load_include('inc', 'workflow', 'includes/'. $file);
     }
