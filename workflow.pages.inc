@@ -11,16 +11,16 @@
  */
 function workflow_tab_page($node = NULL) {
   drupal_set_title(check_plain($node->title));
-  $workflow_name = workflow_get_workflow_for_type($node->type);
+  $workflow = workflow_get_workflow_for_type($node->type);
   $states_per_page = variable_get('workflow_states_per_page', 20);
 
-  $states = workflow_get_states($workflow_name, TRUE);
+  $states = workflow_get_states($workflow->name, TRUE);
   $all_states = workflow_get_states(NULL, TRUE);
   $current_state_name = workflow_node_current_state($node);
   $current_state = $states[$current_state_name];
 
   $output = '<p>'. t('Current state: !state', array('!state' => theme('workflow_current_state', $current_state->label))) . "</p>\n";
-  $output .= drupal_get_form('workflow_tab_form', $node, $workflow_name, $states, $current_state);
+  $output .= drupal_get_form('workflow_tab_form', $node, $workflow->name, $states, $current_state);
 
   $rows = array();
   $result = pager_query("SELECT h.*, u.name "

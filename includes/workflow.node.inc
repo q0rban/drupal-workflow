@@ -41,19 +41,25 @@ function workflow_get_types($name) {
 }
 
 /**
- * Get ID of a workflow for a node type.
+ * Get a workflow for a node type.
  *
  * @param $type
  *   Machine readable node type name, e.g. 'story'.
- * @return string
- *   The machine name of the workflow or FALSE if no workflow is mapped to this type.
+ * @return
+ *   The workflow object.
  */
 function workflow_get_workflow_for_type($type) {
   static $cache;
 
-  if(empty($cache[$type])) {
-    $sql = "SELECT workflow_name FROM {workflow_type_map} WHERE type = '%s'";
-    $cache[$type] = db_result(db_query($sql, $type));
+  if (!isset($cache)) {
+    $cache = array();
+    foreach (workflow_load_all() as $workflow) {
+      if (!empty($workflow->node_types)) {
+        foreach ($workflow->node_types as $node_type) {
+          $cache[$node_type] = $workflow;
+        }
+      }
+    }
   }
 
   return empty($cache[$type]) ? FALSE : $cache[$type];
@@ -69,7 +75,9 @@ function workflow_types_save($form_values) {
   db_query("DELETE FROM {workflow_type_map}");
   $node_types = node_get_types();
   foreach ($node_types as $type => $name) {
-    db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $form_values[$type]['workflow_name']);
-    variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
+    if ($workflow_name = $form_values[$type]['workflow_name']) {
+      db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $workflow_name);
+      variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
+    }
   }
 }

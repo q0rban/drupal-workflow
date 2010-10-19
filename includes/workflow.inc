@@ -842,8 +842,8 @@ function workflow_actions_remove($tid, $aid) {
  */
 function workflow_field_choices($node) {
   global $user;
-  $name = workflow_get_workflow_for_type($node->type);
-  if (!$name) {
+
+  if (!($workflow = workflow_get_workflow_for_type($node->type))) {
     // No workflow for this type.
     return array();
   }
@@ -886,8 +886,8 @@ function workflow_node_current_state($node) {
 
   if (!$state_name && !empty($node->type)) {
     // No current state. Use creation state.
-    $name = workflow_get_workflow_for_type($node->type);
-    $state_name = _workflow_creation_state($name);
+    $workflow = workflow_get_workflow_for_type($node->type);
+    $state_name = _workflow_creation_state($workflow->name);
   }
   return $state_name;
 }

@@ -130,16 +130,17 @@ function workflow_menu() {
  */
 function workflow_node_tab_access($node = NULL) {
   global $user;
-  $name = workflow_get_workflow_for_type($node->type);
-  if ($name === FALSE) {
+
+  if (!($workflow = workflow_get_workflow_for_type($node->type))) {
     // No workflow associated with this node type.
     return FALSE;
   }
+
   $roles = array_keys($user->roles);
   if ($node->uid == $user->uid) {
     $roles = array_merge(array('author'), $roles);
   }
-  $workflow = workflow_load($name);
+
   $allowed_roles = $workflow->tab_roles ? explode(',', $workflow->tab_roles) : array();
 
   if (user_access('administer nodes') || array_intersect($roles, $allowed_roles)) {
@@ -257,8 +258,7 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // Note no break; fall through to 'update' case.
     case 'update':
       // Do nothing if there is no workflow for this node type.
-      $name = workflow_get_workflow_for_type($node->type);
-      if (!$name) {
+      if (!($workflow = workflow_get_workflow_for_type($node->type))) {
         break;
       }
 
@@ -402,7 +402,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     if (isset($form['#node'])) {
       $node = $form['#node'];
       // Abort if no workflow is assigned to this node type.
-      if (!($name = workflow_get_workflow_for_type($node->type))) {
+      if (!($workflow = workflow_get_workflow_for_type($node->type))) {
         return;
       }
     }
@@ -416,7 +416,7 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
     }
 
     $choices = workflow_field_choices($node);
-    $name = workflow_get_workflow_for_type($node->type);
+    $name = $workflow->name;
 
     // If this is a preview, the current state should come from the form values,
     // not the node, as the user may have changed the state.
@@ -427,7 +427,6 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
       return;
     }
 
-    $workflow = workflow_load($name);
     $form['#wf'] = $workflow;
 
     // If the current node state is not one of the choices, autoselect first choice.
