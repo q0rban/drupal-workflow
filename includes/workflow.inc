@@ -201,6 +201,13 @@ function workflow_create($workflow) {
       // Save each workflow state.
       array_walk($workflow->states, 'workflow_state_save');
     }
+
+    if (isset($workflow->node_types)) {
+      foreach ($workflow->node_types as $type) {
+        workflow_node_type_save($workflow->name, $type);
+      }
+    }
+
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     menu_rebuild();
   }
