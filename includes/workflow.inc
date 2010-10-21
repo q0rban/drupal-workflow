@@ -204,26 +204,6 @@ function workflow_transition_delete_role($from, $to, $role) {
 }
 
 /**
- * See if a transition is allowed for a given role.
- *
- * @param int $tid
- * @param mixed $role
- *   A single role (int or string 'author') or array of roles.
- * @return
- *   TRUE if the role is allowed to do the transition.
- */
-function workflow_transition_allowed($tid, $role = NULL) {
-  $allowed = db_result(db_query("SELECT roles FROM {workflow_transitions} WHERE tid = %d", $tid));
-  $allowed = explode(',', $allowed);
-  if ($role) {
-    if (!is_array($role)) {
-      $role = array($role);
-    }
-    return array_intersect($role, $allowed) ==  TRUE;
-  }
-}
-
-/**
  * Tell caller whether a state is a protected system state, such as the creation state.
  *
  * @param $state
@@ -580,37 +560,40 @@ function workflow_transition_delete($tid) {
  * Validate target state and either execute a transition immediately or schedule
  * a transition to be executed later by cron.
  *
- * @param $node
+ * @param $object
+ *   The entity in which the state is changing.
  * @param $state_name
- *   The machine name of the target state
+ *   The machine name of the target state.
+ * @param $workflow
+ *   The workflow object for this entity.
  */
-function workflow_transition($node, $state_name) {
+function workflow_transition($object, $state_name, $workflow) {
   // Make sure new state is a valid choice.
-  if (array_key_exists($state_name, workflow_field_choices($node))) {
-    if (!$node->workflow_scheduled) {
+  if (array_key_exists($state_name, workflow_field_choices($object, $workflow))) {
+    if (!$object->workflow_scheduled) {
       // It's an immediate change. Do the transition.
-      workflow_execute_transition($node, $state_name, isset($node->workflow_comment) ? $node->workflow_comment : NULL);
+      workflow_execute_transition($object, $state_name, isset($object->workflow_comment) ? $object->workflow_comment : NULL);
     }
     else {
       // Schedule the the time to change the state.
-      $comment = $node->workflow_comment;
-      $old_state_name = workflow_node_current_state($node);
+      $comment = $object->workflow_comment;
+      $old_state_name = workflow_node_current_state($object);
 
-      if ($node->workflow_scheduled_date['day'] < 10) {
-        $node->workflow_scheduled_date['day'] = '0' .
-        $node->workflow_scheduled_date['day'];
+      if ($object->workflow_scheduled_date['day'] < 10) {
+        $object->workflow_scheduled_date['day'] = '0' .
+        $object->workflow_scheduled_date['day'];
       }
 
-      if ($node->workflow_scheduled_date['month'] < 10) {
-        $node->workflow_scheduled_date['month'] = '0' .
-        $node->workflow_scheduled_date['month'];
+      if ($object->workflow_scheduled_date['month'] < 10) {
+        $object->workflow_scheduled_date['month'] = '0' .
+        $object->workflow_scheduled_date['month'];
       }
 
-      if (!$node->workflow_scheduled_hour) {
-        $node->workflow_scheduled_hour = '00:00';
+      if (!$object->workflow_scheduled_hour) {
+        $object->workflow_scheduled_hour = '00:00';
       }
 
-      $scheduled = $node->workflow_scheduled_date['year'] . $node->workflow_scheduled_date['month'] . $node->workflow_scheduled_date['day'] . ' ' . $node->workflow_scheduled_hour . 'Z';
+      $scheduled = $object->workflow_scheduled_date['year'] . $object->workflow_scheduled_date['month'] . $object->workflow_scheduled_date['day'] . ' ' . $object->workflow_scheduled_hour . 'Z';
       if ($scheduled = strtotime($scheduled)) {
         // Adjust for user and site timezone settings.
         global $user;
@@ -623,15 +606,15 @@ function workflow_transition($node, $state_name) {
         $scheduled = $scheduled - $timezone;
 
         // Clear previous entries and insert.
-        db_query("DELETE FROM {workflow_scheduled_transition} WHERE nid = %d", $node->nid);
-        db_query("INSERT INTO {workflow_scheduled_transition} (nid, old_state_name, state_name, scheduled, comment) VALUES (%d, '%s', '%s', %d, '%s')", $node->nid, $old_state_name, $state_name, $scheduled, $comment);
+        db_query("DELETE FROM {workflow_scheduled_transition} WHERE nid = %d", $object->nid);
+        db_query("INSERT INTO {workflow_scheduled_transition} (nid, old_state_name, state_name, scheduled, comment) VALUES (%d, '%s', '%s', %d, '%s')", $object->nid, $old_state_name, $state_name, $scheduled, $comment);
 
         $t_args = array(
-          '@node_title' => $node->title,
+          '@node_title' => $object->title,
           '%state_name' => workflow_get_state_label($state_name),
           '!scheduled_date' => format_date($scheduled),
         );
-        watchdog('workflow', '@node_title scheduled for state change to %state_name on !scheduled_date', $t_args, WATCHDOG_NOTICE, l('view', "node/$node->nid/workflow"));
+        watchdog('workflow', '@node_title scheduled for state change to %state_name on !scheduled_date', $t_args, WATCHDOG_NOTICE, l('view', "node/$object->nid/workflow"));
         drupal_set_message(t('@node_title is scheduled for state change to %state_name on !scheduled_date', $t_args));
       }
     }
@@ -639,22 +622,13 @@ function workflow_transition($node, $state_name) {
 }
 
 /**
- * Get allowable transitions for a given workflow state. Typical use:
+ * Get allowable transitions based on roles. Typical use:
  *
- * global $user;
- * $possible = workflow_allowable_transitions($state_name, 'to', $user->roles);
- *
- * If the state name corresponded to the state named "Draft", $possible now
- * contains the states that the current user may move to from the Draft state.
- *
- * @param $state_name
- *   The machine name of the state in question.
- * @param $dir
- *   The direction of the transition: 'to' or 'from' the state denoted by
- *   $state_name. When set to 'to' all the allowable states that may be moved to
- *   are returned; when set to 'from' all the allowable states that may move to
- *   the current state are returned.
- * @param mixed $roles
+ * @param $current_state
+ *   The machine name of the current state.
+ * @param $workflow
+ *   The workflow object.
+ * @param $roles
  *   Array of ints (and possibly the string 'author') representing the user's
  *   roles. If the string 'ALL' is passed (instead of an array) the role
  *   constraint is ignored (this is the default for backwards compatibility).
@@ -663,35 +637,17 @@ function workflow_transition($node, $state_name) {
  *   Associative array of states ($state_name => $state_label pairs), excluding
  *   current state.
  */
-function workflow_allowable_transitions($state_name, $dir = 'to', $roles = 'ALL') {
+function workflow_allowable_transitions($current_state, $workflow, $roles = 'ALL') {
   $transitions = array();
 
-  if ($dir == 'to') {
-    $field = 'target_state_name';
-    $field_where = 'state_name';
-  }
-  else {
-    $field = 'state_name';
-    $field_where = 'target_state_name';
-  }
+  $available_transitions = $workflow->states[$current_state]->transitions;
 
-  $result = db_query(
-    "(SELECT t.tid, t.%s as state_name, s.label AS state_label, s.weight AS state_weight "
-    . "FROM {workflow_transitions} t "
-    . "INNER JOIN {workflow_states} s "
-    . "ON s.name = t.%s "
-    . "WHERE t.%s = '%s' AND s.status = 1 "
-    . "ORDER BY state_weight) "
-    . "UNION "
-    . "(SELECT s.sid as tid, s.name as state_name, s.label as state_label, s.weight as state_weight "
-    . "FROM {workflow_states} s "
-    . "WHERE s.name = '%s' AND s.status = 1) "
-    . "ORDER BY state_weight, state_name", $field, $field, $field_where, $state_name, $state_name);
-  while ($t = db_fetch_object($result)) {
+  foreach ($workflow->states as $state_name => $state) {
+    $allowed_roles = $available_transitions[$state_name];
     if ($roles == 'ALL'  // Superuser.
-      || $state_name == $t->state_name // Include current state for same-state transitions.
-      || workflow_transition_allowed($t->tid, $roles)) {
-      $transitions[$t->state_name] = check_plain(t($t->state_label));
+      || $state_name == $current_state // Include current state for same-state transitions.
+      || array_intersect($roles, $allowed_roles)) {
+      $transitions[$state_name] = $state->label;
     }
   }
 
@@ -833,38 +789,31 @@ function workflow_actions_remove($tid, $aid) {
 }
 
 /**
- * Get the states current user can move to for a given node.
+ * Get the states current user can move to.
  *
- * @param object $node
- *   The node to check.
+ * @param $object
+ *   The entity to determine choices for.
+ * @param $workflow
+ *   The workflow to determine the options on.
  * @return
  *   Array of transitions.
  */
-function workflow_field_choices($node) {
+function workflow_field_choices($object, $workflow) {
   global $user;
 
-  if (!($workflow = workflow_get_workflow_for_type($node->type))) {
-    // No workflow for this type.
-    return array();
-  }
-
   $roles = array_keys($user->roles);
-  $current_state = workflow_node_current_state($node);
+  $current_state = workflow_node_current_state($object);
 
   // If user is node author or this is a new page, give the authorship role.
-  if (($user->uid == $node->uid && $node->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
+  if (($user->uid == $object->uid && $object->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
     $roles += array('author' => 'author');
   }
   if ($user->uid == 1) {
     // Superuser is special.
     $roles = 'ALL';
   }
-  $transitions = workflow_allowable_transitions($current_state, 'to', $roles);
+  $transitions = workflow_allowable_transitions($current_state, $workflow, $roles);
 
-  // Include current state if it is not the (creation) state.
-  if ($current_state == _workflow_creation_state($name)) {
-    unset($transitions[$current_state]);
-  }
   return $transitions;
 }
 

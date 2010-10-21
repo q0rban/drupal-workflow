@@ -330,7 +330,8 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
           $form['transitions'][$from][$to][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
-            '#default_value' => $tid ? workflow_transition_allowed($tid, $rid) : FALSE);
+            '#default_value' => $tid ? workflow_transition_allowed($tid, $rid) : FALSE,
+          );
         }
       }
     }
