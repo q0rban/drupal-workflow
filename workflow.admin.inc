@@ -486,7 +486,7 @@ function workflow_states_form(&$form_state, $workflow) {
   }
 
   // Now add an empty state form.
-  $form['states'][] = _workflow_state_create_form(&$form_state, $workflow->name);
+  $form['states'][] = _workflow_state_create_form($form_state, $workflow->name);
 
   $form['buttons']['submit'] = array(
     '#type' => 'submit',
