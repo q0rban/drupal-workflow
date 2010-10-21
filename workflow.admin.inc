@@ -326,11 +326,12 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
         $from = $state_name;
         $to = $nested_state_name;
         foreach ($roles as $rid => $role_name) {
-          $tid = workflow_get_transition_id($from, $to);
+          $transitions = $workflow->states[$from]->transitions;
+          $transition_roles = isset($transitions[$to]) ? $transitions[$to] : array();
           $form['transitions'][$from][$to][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
-            '#default_value' => $tid ? workflow_transition_allowed($tid, $rid) : FALSE,
+            '#default_value' => in_array($rid, $transition_roles),
           );
         }
       }

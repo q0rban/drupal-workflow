@@ -111,6 +111,13 @@ function workflow_load_all_labels() {
 }
 
 /**
+ * Resets the workflow cache and reloads all workflow objects.
+ */
+function workflow_invalidate_cache() {
+  workflow_load_all(TRUE);
+}
+
+/**
  * Update the transitions for a workflow.
  *
  * @param array $transitions
@@ -145,6 +152,9 @@ function workflow_update_transitions($transitions = array()) {
     }
   }
   db_query("DELETE FROM {workflow_transitions} WHERE roles = ''");
+
+  // Invalidate the workflow cache.
+  workflow_invalidate_cache();
 }
 
 /**
@@ -629,25 +639,28 @@ function workflow_transition($object, $state_name, $workflow) {
  *   The machine name of the current state.
  * @param $workflow
  *   The workflow object.
- * @param $roles
- *   Array of ints (and possibly the string 'author') representing the user's
- *   roles. If the string 'ALL' is passed (instead of an array) the role
- *   constraint is ignored (this is the default for backwards compatibility).
+ * @param $account
+ *   The user account to discover transitions for.
  *
  * @return
  *   Associative array of states ($state_name => $state_label pairs), excluding
  *   current state.
  */
-function workflow_allowable_transitions($current_state, $workflow, $roles = 'ALL') {
+function workflow_allowable_transitions($current_state, $workflow, $account = NULL) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+
   $transitions = array();
 
   $available_transitions = $workflow->states[$current_state]->transitions;
 
   foreach ($workflow->states as $state_name => $state) {
     $allowed_roles = $available_transitions[$state_name];
-    if ($roles == 'ALL'  // Superuser.
+    if ($account->uid == 1  // Superuser.
       || $state_name == $current_state // Include current state for same-state transitions.
-      || array_intersect($roles, $allowed_roles)) {
+      || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
       $transitions[$state_name] = $state->label;
     }
   }
@@ -703,9 +716,11 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
   // Make sure this transition is valid and allowed for the current user.
   // Check allowability of state change if user is not superuser (might be cron).
   if (($user->uid != 1) && !$force) {
-    $roles = $workflow->states[$old_state]->transitions[$state_name];
-    $allowed_roles = array_merge(array_keys($user->roles), array('author'));
-    if (!array_intersect($roles, $allowed_roles)) {
+    $account = $user;
+    if ($node->uid == $user->uid) {
+      $account->roles['author'] = 'author';
+    }
+    if (!workflow_transition_allowed($workflow, $old_state, $state_name, $account)) {
       watchdog('workflow', 'User %user not allowed to go from state %old to %new', array('%user' => $user->name, '%old' => $old_state, '%new' => $state_name, WATCHDOG_NOTICE));
       return;
     }
@@ -747,6 +762,32 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
   }
 
   return $state_name;
+}
+
+/**
+ * Determine if a transition is allowed.
+ *
+ * @param $workflow
+ *   The workflow object.
+ * @param $from_state
+ *   The machine name of the state being transitioned from.
+ * @param $to_state
+ *   The machine name of the state being transitioned to.
+ * @return
+ *   Boolean TRUE or FALSE.
+ */
+function workflow_transition_allowed($workflow, $from_state, $to_state, $account = NULL) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+
+  $roles = $workflow->states[$from_state]->transitions[$to_state];
+  $allowed_roles = array_keys($account->roles);
+
+  dsm($allowed_roles);
+
+  return (bool) array_intersect($roles, $allowed_roles);
 }
 
 /**
@@ -805,19 +846,15 @@ function workflow_actions_remove($tid, $aid) {
  */
 function workflow_field_choices($object, $workflow) {
   global $user;
+  $account = $user;
 
-  $roles = array_keys($user->roles);
   $current_state = workflow_node_current_state($object);
 
   // If user is node author or this is a new page, give the authorship role.
   if (($user->uid == $object->uid && $object->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
-    $roles += array('author' => 'author');
+    $account->roles['author'] = 'author';
   }
-  if ($user->uid == 1) {
-    // Superuser is special.
-    $roles = 'ALL';
-  }
-  $transitions = workflow_allowable_transitions($current_state, $workflow, $roles);
+  $transitions = workflow_allowable_transitions($current_state, $workflow, $account);
 
   return $transitions;
 }
