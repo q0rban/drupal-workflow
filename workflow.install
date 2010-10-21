@@ -18,6 +18,8 @@ function workflow_uninstall() {
     variable_del('workflow_'. $type);
   }
   drupal_uninstall_schema('workflow');
+  
+  cache_clear_all('workflows', 'cache');
 }
 
 /**
@@ -32,7 +34,22 @@ function workflow_schema() {
       'tab_roles'    => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
       'options'      => array('type' => 'text', 'size' => 'big', 'not null' => FALSE, 'serialize' => TRUE)),
     'primary key'    => array('wid'),
-    'unique keys'    => array('name' => array('name')),
+    'unique keys'    => array('name' => array('name')),    
+    'indexes' => array('op_workflows_name' => array('name')),
+    'export' => array(
+      'key' => 'name',
+      'key name' => 'Machine Name',
+      'identifier' => 'workflow',
+      'default hook' => 'workflow_default_worfklows',
+      //'load all callback' => 'op_workflows_get_all',
+      'api' => array(
+        'owner' => 'workflow',
+        'api' => 'workflow_default_worfklows',  // Base name for api include files.
+        'minimum_version' => 1,
+        'current_version' => 1,
+      )
+    )    
+    
   );
   $schema['workflow_type_map'] = array(
     'fields' => array(
@@ -55,8 +72,9 @@ function workflow_schema() {
   );
   $schema['workflow_states'] = array(
     'export' => array(
+      'key' => 'name',
       'key name' => 'Machine Name',
-      'primary key' => 'sid',
+      //'primary key' => 'sid',
       'identifier' => 'workflow_state',
       'default hook' => 'workflow_default_states',
       'api' => array(
