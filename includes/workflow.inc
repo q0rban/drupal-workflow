@@ -109,96 +109,37 @@ function workflow_load_all_labels() {
 }
 
 /**
- * Update the transitions for a workflow.
- *
- * @param array $transitions
- *   Transitions, for example:
- *     18 => array(
- *       20 => array(
- *         'author' => 1,
- *         1        => 0,
- *         2        => 1,
- *       )
- *     )
- *   means the transition from state 18 to state 20 can be executed by
- *   the node author or a user in role 2. The $transitions array should
- *   contain ALL transitions for the workflow.
+ * Resets the workflow cache and reloads all workflow objects.
  */
-function workflow_update_transitions($transitions = array()) {
-  // Empty string is sometimes passed in instead of an array.
-  if (!$transitions) {
-    return;
-  }
-
-  foreach ($transitions as $from => $to_data) {
-    foreach ($to_data as $to => $role_data) {
-      foreach ($role_data as $role => $can_do) {
-        if ($can_do) {
-          workflow_transition_add_role($from, $to, $role);
-        }
-        else {
-          workflow_transition_delete_role($from, $to, $role);
-        }
-      }
-    }
-  }
-  db_query("DELETE FROM {workflow_transitions} WHERE roles = ''");
+function workflow_invalidate_cache() {
+  workflow_load_all(TRUE);
 }
 
 /**
- * Add a role to the list of those allowed for a given transition.
+ * Write the transition roles for a workflow state.
  *
- * Add the transition if necessary.
- *
- * @param $from
- *   The machine name of the originating state.
- * @param $to
- *   The machine name of the target state.
- * @param mixed $role
- *   Int (role ID) or string ('author').
+ * @param $from_state
+ *   The machine name of the state being transitioned from.
+ * @param $transitions
+ *   An array of allowed roles, keyed by the destination state.
  */
-function workflow_transition_add_role($from, $to, $role) {
-  $transition = array(
-    'state_name' => $from,
-    'target_state_name' => $to,
-    'roles' => $role,
-  );
-  $tid = workflow_get_transition_id($from, $to);
-  if ($tid) {
-    $roles = db_result(db_query("SELECT roles FROM {workflow_transitions} WHERE tid=%d", $tid));
-    $roles = explode(',', $roles);
-    if (array_search($role, $roles) === FALSE) {
-      $roles[] = $role;
-      $transition['roles'] = implode(',', $roles);
-      $transition['tid'] = $tid;
-      drupal_write_record('workflow_transitions', $transition, 'tid');
-    }
-  }
-  else {
-    drupal_write_record('workflow_transitions', $transition);
-  }
-}
+function workflow_transitions_write($from_state, $transitions) {
+  // Clean up existing
+  db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
-/**
- * Remove a role from the list of those allowed for a given transition.
- *
- * @param $from
- *   The machine name of the originating state.
- * @param $to
- *   The machine name of the target state.
- * @param mixed $role
- *   Int (role ID) or string ('author').
- */
-function workflow_transition_delete_role($from, $to, $role) {
-  $tid = workflow_get_transition_id($from, $to);
-  if ($tid) {
-    $roles = db_result(db_query("SELECT roles FROM {workflow_transitions} WHERE tid=%d", $tid));
-    $roles = explode(',', $roles);
-    if (($i = array_search($role, $roles)) !== FALSE) {
-      unset($roles[$i]);
-      db_query("UPDATE {workflow_transitions} SET roles='%s' WHERE tid=%d", implode(',', $roles), $tid);
-    }
+  foreach ($transitions as $to_state => $roles) {
+    $transition = array();
+    $transition['state_name'] = $from_state;
+    $transition['target_state_name'] = $to_state;
+    $transition['roles'] = implode(',', $roles);
+
+    $record = drupal_write_record('workflow_transitions', $transition);
   }
+
+  // Invalidate the workflow cache.
+  workflow_invalidate_cache();
+
+  return $record;
 }
 
 /**
@@ -246,19 +187,25 @@ function workflow_create($workflow) {
 
   if (drupal_write_record('workflows', $workflow)) {
     if (empty($workflow->states)) {
-      $state = array(
-        'name' => _workflow_creation_state($workflow->name),
-        'workflow_name' => $workflow->name,
-        'label' => t('(creation)'),
-        'sysid' => WORKFLOW_CREATION,
-        'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT,
-      );
+      $state = new stdClass();
+      $state->name = _workflow_creation_state($workflow->name);
+      $state->workflow_name = $workflow->name;
+      $state->label = t('(creation)');
+      $state->sysid = WORKFLOW_CREATION;
+      $state->weight = WORKFLOW_CREATION_DEFAULT_WEIGHT;
       workflow_state_save($state);
     }
     else {
       // Save each workflow state.
       array_walk($workflow->states, 'workflow_state_save');
     }
+
+    if (isset($workflow->node_types)) {
+      foreach ($workflow->node_types as $type) {
+        workflow_node_type_save($workflow->name, $type);
+      }
+    }
+
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     menu_rebuild();
   }
@@ -466,12 +413,18 @@ function workflow_get_state_label($sid) {
  *   The ID of the new or updated workflow state.
  */
 function workflow_state_save($state) {
-  if (!isset($state['sid'])) {
+  if (!isset($state->sid)) {
     drupal_write_record('workflow_states', $state);
   }
   else {
     drupal_write_record('workflow_states', $state, 'sid');
   }
+
+  if (isset($state->transitions)) {
+    workflow_transitions_write($state->name, $state->transitions);
+  }
+
+  workflow_invalidate_cache();
 
   return $state;
 }
@@ -627,25 +580,28 @@ function workflow_transition($object, $state_name, $workflow) {
  *   The machine name of the current state.
  * @param $workflow
  *   The workflow object.
- * @param $roles
- *   Array of ints (and possibly the string 'author') representing the user's
- *   roles. If the string 'ALL' is passed (instead of an array) the role
- *   constraint is ignored (this is the default for backwards compatibility).
+ * @param $account
+ *   The user account to discover transitions for.
  *
  * @return
  *   Associative array of states ($state_name => $state_label pairs), excluding
  *   current state.
  */
-function workflow_allowable_transitions($current_state, $workflow, $roles = 'ALL') {
+function workflow_allowable_transitions($current_state, $workflow, $account = NULL) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+
   $transitions = array();
 
   $available_transitions = $workflow->states[$current_state]->transitions;
 
   foreach ($workflow->states as $state_name => $state) {
     $allowed_roles = $available_transitions[$state_name];
-    if ($roles == 'ALL'  // Superuser.
+    if ($account->uid == 1  // Superuser.
       || $state_name == $current_state // Include current state for same-state transitions.
-      || array_intersect($roles, $allowed_roles)) {
+      || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
       $transitions[$state_name] = $state->label;
     }
   }
@@ -701,9 +657,11 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
   // Make sure this transition is valid and allowed for the current user.
   // Check allowability of state change if user is not superuser (might be cron).
   if (($user->uid != 1) && !$force) {
-    $roles = $workflow->states[$old_state]->transitions[$state_name];
-    $allowed_roles = array_merge(array_keys($user->roles), array('author'));
-    if (!array_intersect($roles, $allowed_roles)) {
+    $account = $user;
+    if ($node->uid == $user->uid) {
+      $account->roles['author'] = 'author';
+    }
+    if (!workflow_transition_allowed($workflow, $old_state, $state_name, $account)) {
       watchdog('workflow', 'User %user not allowed to go from state %old to %new', array('%user' => $user->name, '%old' => $old_state, '%new' => $state_name, WATCHDOG_NOTICE));
       return;
     }
@@ -745,6 +703,32 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
   }
 
   return $state_name;
+}
+
+/**
+ * Determine if a transition is allowed.
+ *
+ * @param $workflow
+ *   The workflow object.
+ * @param $from_state
+ *   The machine name of the state being transitioned from.
+ * @param $to_state
+ *   The machine name of the state being transitioned to.
+ * @return
+ *   Boolean TRUE or FALSE.
+ */
+function workflow_transition_allowed($workflow, $from_state, $to_state, $account = NULL) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+
+  $roles = $workflow->states[$from_state]->transitions[$to_state];
+  $allowed_roles = array_keys($account->roles);
+
+  dsm($allowed_roles);
+
+  return (bool) array_intersect($roles, $allowed_roles);
 }
 
 /**
@@ -803,19 +787,15 @@ function workflow_actions_remove($tid, $aid) {
  */
 function workflow_field_choices($object, $workflow) {
   global $user;
+  $account = $user;
 
-  $roles = array_keys($user->roles);
   $current_state = workflow_node_current_state($object);
 
   // If user is node author or this is a new page, give the authorship role.
   if (($user->uid == $object->uid && $object->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
-    $roles += array('author' => 'author');
+    $account->roles['author'] = 'author';
   }
-  if ($user->uid == 1) {
-    // Superuser is special.
-    $roles = 'ALL';
-  }
-  $transitions = workflow_allowable_transitions($current_state, $workflow, $roles);
+  $transitions = workflow_allowable_transitions($current_state, $workflow, $account);
 
   return $transitions;
 }

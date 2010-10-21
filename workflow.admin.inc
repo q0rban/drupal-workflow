@@ -326,11 +326,12 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
         $from = $state_name;
         $to = $nested_state_name;
         foreach ($roles as $rid => $role_name) {
-          $tid = workflow_get_transition_id($from, $to);
+          $transitions = $workflow->states[$from]->transitions;
+          $transition_roles = isset($transitions[$to]) ? $transitions[$to] : array();
           $form['transitions'][$from][$to][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
-            '#default_value' => $tid ? workflow_transition_allowed($tid, $rid) : FALSE,
+            '#default_value' => in_array($rid, $transition_roles),
           );
         }
       }
@@ -360,7 +361,20 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
  * @see workflow_edit_form()
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
-  workflow_update_transitions($form_state['values']['transitions']);
+  $values = $form_state['values']['transitions'];
+  foreach ($values as $from_state => $transitions) {
+    // Convert the roles array to the expected format.
+    foreach ($transitions as $to_state => $roles) {
+      $transitions[$to_state] = array_keys(array_filter($roles));
+    }
+    workflow_transitions_write($from_state, $transitions);
+  }
+
+  $workflow = $form['#workflow'];
+
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
 
   drupal_set_message(t('The workflow transitions were updated.'));
 }
@@ -769,7 +783,7 @@ function workflow_states_form_submit($form, &$form_state) {
     // saving.
     if (!empty($state['name']) && !empty($state['label']) && !$state['system_state']) {
       $state['name'] = strtolower($state['name']);
-      $state = workflow_state_save($state);
+      $state = workflow_state_save((object) $state);
       if (empty($form_state['values']['states'][$state_name]['sid'])) {
         watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
         drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
@@ -888,7 +902,9 @@ function workflow_types_form() {
     '#value' => t('Each content type may have a separate workflow. The form for changing workflow state can be displayed when editing a node, editing a comment for a node, or both.'),
   );
 
-  foreach (node_get_types('names') as $type => $name) {
+  $form['#node_types'] = $node_types = node_get_types('names');
+
+  foreach ($node_types as $type => $name) {
     $form[$type]['workflow_name'] = array(
       '#type' => 'select',
       '#title' => check_plain($name),
@@ -917,7 +933,10 @@ function workflow_types_form() {
 function theme_workflow_types_form($form) {
   $header = array(t('Content Type'), t('Workflow'), t('Display Workflow Form for:'));
   $rows = array();
-  foreach (node_get_types('names') as $type => $name) {
+
+  $node_types = $form['#node_types'];
+
+  foreach ($node_types as $type => $name) {
     $name = $form[$type]['workflow_name']['#title'];
     unset($form[$type]['workflow_name']['#title']);
     $rows[] = array($name, drupal_render($form[$type]['workflow_name']), drupal_render($form[$type]['placement']));
@@ -933,8 +952,17 @@ function theme_workflow_types_form($form) {
  * @see workflow_types_form()
  */
 function workflow_types_form_submit($form, &$form_state) {
-  workflow_types_save($form_state['values']);
+  $node_types = $form['#node_types'];
+
+  foreach ($node_types as $type => $name) {
+    if ($workflow_name = $form_state['values'][$type]['workflow_name']) {
+      workflow_node_type_save($workflow_name, $type);
+      variable_set('workflow_' . $type, array_keys(array_filter($form_state['values'][$type]['placement'])));
+    }
+  }
+
   drupal_set_message(t('The workflow mapping was saved.'));
   menu_rebuild();
+  workflow_invalidate_cache();
   $form_state['redirect'] = 'admin/build/workflow';
 }

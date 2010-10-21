@@ -71,13 +71,7 @@ function workflow_get_workflow_for_type($type) {
  *
  * @param $form_state['values']
  */
-function workflow_types_save($form_values) {
-  db_query("DELETE FROM {workflow_type_map}");
-  $node_types = node_get_types();
-  foreach ($node_types as $type => $name) {
-    if ($workflow_name = $form_values[$type]['workflow_name']) {
-      db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $type, $workflow_name);
-      variable_set('workflow_' . $type, array_keys(array_filter(($form_values[$type]['placement']))));
-    }
-  }
+function workflow_node_type_save($workflow_name, $node_type) {
+  db_query("DELETE FROM {workflow_type_map} WHERE type = '%s'", $node_type);
+  db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $node_type, $workflow_name);
 }
