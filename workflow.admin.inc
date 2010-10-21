@@ -361,7 +361,20 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
  * @see workflow_edit_form()
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
-  workflow_update_transitions($form_state['values']['transitions']);
+  $values = $form_state['values']['transitions'];
+  foreach ($values as $from_state => $transitions) {
+    // Convert the roles array to the expected format.
+    foreach ($transitions as $to_state => $roles) {
+      $transitions[$to_state] = array_keys(array_filter($roles));
+    }
+    workflow_transitions_write($from_state, $transitions);
+  }
+
+  $workflow = $form['#workflow'];
+
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
 
   drupal_set_message(t('The workflow transitions were updated.'));
 }
@@ -770,7 +783,7 @@ function workflow_states_form_submit($form, &$form_state) {
     // saving.
     if (!empty($state['name']) && !empty($state['label']) && !$state['system_state']) {
       $state['name'] = strtolower($state['name']);
-      $state = workflow_state_save($state);
+      $state = workflow_state_save((object) $state);
       if (empty($form_state['values']['states'][$state_name]['sid'])) {
         watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
         drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));

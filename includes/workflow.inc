@@ -118,99 +118,30 @@ function workflow_invalidate_cache() {
 }
 
 /**
- * Update the transitions for a workflow.
+ * Write the transition roles for a workflow state.
  *
- * @param array $transitions
- *   Transitions, for example:
- *     18 => array(
- *       20 => array(
- *         'author' => 1,
- *         1        => 0,
- *         2        => 1,
- *       )
- *     )
- *   means the transition from state 18 to state 20 can be executed by
- *   the node author or a user in role 2. The $transitions array should
- *   contain ALL transitions for the workflow.
+ * @param $from_state
+ *   The machine name of the state being transitioned from.
+ * @param $transitions
+ *   An array of allowed roles, keyed by the destination state.
  */
-function workflow_update_transitions($transitions = array()) {
-  // Empty string is sometimes passed in instead of an array.
-  if (!$transitions) {
-    return;
-  }
+function workflow_transitions_write($from_state, $transitions) {
+  // Clean up existing
+  db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
-  foreach ($transitions as $from => $to_data) {
-    foreach ($to_data as $to => $role_data) {
-      foreach ($role_data as $role => $can_do) {
-        if ($can_do) {
-          workflow_transition_add_role($from, $to, $role);
-        }
-        else {
-          workflow_transition_delete_role($from, $to, $role);
-        }
-      }
-    }
+  foreach ($transitions as $to_state => $roles) {
+    $transition = array();
+    $transition['state_name'] = $from_state;
+    $transition['target_state_name'] = $to_state;
+    $transition['roles'] = implode(',', $roles);
+
+    $record = drupal_write_record('workflow_transitions', $transition);
   }
-  db_query("DELETE FROM {workflow_transitions} WHERE roles = ''");
 
   // Invalidate the workflow cache.
   workflow_invalidate_cache();
-}
 
-/**
- * Add a role to the list of those allowed for a given transition.
- *
- * Add the transition if necessary.
- *
- * @param $from
- *   The machine name of the originating state.
- * @param $to
- *   The machine name of the target state.
- * @param mixed $role
- *   Int (role ID) or string ('author').
- */
-function workflow_transition_add_role($from, $to, $role) {
-  $transition = array(
-    'state_name' => $from,
-    'target_state_name' => $to,
-    'roles' => $role,
-  );
-  $tid = workflow_get_transition_id($from, $to);
-  if ($tid) {
-    $roles = db_result(db_query("SELECT roles FROM {workflow_transitions} WHERE tid=%d", $tid));
-    $roles = explode(',', $roles);
-    if (array_search($role, $roles) === FALSE) {
-      $roles[] = $role;
-      $transition['roles'] = implode(',', $roles);
-      $transition['tid'] = $tid;
-      drupal_write_record('workflow_transitions', $transition, 'tid');
-    }
-  }
-  else {
-    drupal_write_record('workflow_transitions', $transition);
-  }
-}
-
-/**
- * Remove a role from the list of those allowed for a given transition.
- *
- * @param $from
- *   The machine name of the originating state.
- * @param $to
- *   The machine name of the target state.
- * @param mixed $role
- *   Int (role ID) or string ('author').
- */
-function workflow_transition_delete_role($from, $to, $role) {
-  $tid = workflow_get_transition_id($from, $to);
-  if ($tid) {
-    $roles = db_result(db_query("SELECT roles FROM {workflow_transitions} WHERE tid=%d", $tid));
-    $roles = explode(',', $roles);
-    if (($i = array_search($role, $roles)) !== FALSE) {
-      unset($roles[$i]);
-      db_query("UPDATE {workflow_transitions} SET roles='%s' WHERE tid=%d", implode(',', $roles), $tid);
-    }
-  }
+  return $record;
 }
 
 /**
@@ -258,13 +189,12 @@ function workflow_create($workflow) {
 
   if (drupal_write_record('workflows', $workflow)) {
     if (empty($workflow->states)) {
-      $state = array(
-        'name' => _workflow_creation_state($workflow->name),
-        'workflow_name' => $workflow->name,
-        'label' => t('(creation)'),
-        'sysid' => WORKFLOW_CREATION,
-        'weight' => WORKFLOW_CREATION_DEFAULT_WEIGHT,
-      );
+      $state = new stdClass();
+      $state->name = _workflow_creation_state($workflow->name);
+      $state->workflow_name = $workflow->name;
+      $state->label = t('(creation)');
+      $state->sysid = WORKFLOW_CREATION;
+      $state->weight = WORKFLOW_CREATION_DEFAULT_WEIGHT;
       workflow_state_save($state);
     }
     else {
@@ -478,12 +408,18 @@ function workflow_get_state_label($sid) {
  *   The ID of the new or updated workflow state.
  */
 function workflow_state_save($state) {
-  if (!isset($state['sid'])) {
+  if (!isset($state->sid)) {
     drupal_write_record('workflow_states', $state);
   }
   else {
     drupal_write_record('workflow_states', $state, 'sid');
   }
+
+  if (isset($state->transitions)) {
+    workflow_transitions_write($state->name, $state->transitions);
+  }
+
+  workflow_invalidate_cache();
 
   return $state;
 }
