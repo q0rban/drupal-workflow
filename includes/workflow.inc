@@ -572,7 +572,8 @@ function workflow_transition($object, $state_name, $workflow) {
   if (array_key_exists($state_name, workflow_field_choices($object, $workflow))) {
     if (!$object->workflow_scheduled) {
       // It's an immediate change. Do the transition.
-      workflow_execute_transition($object, $state_name, isset($object->workflow_comment) ? $object->workflow_comment : NULL);
+      $comment = isset($object->workflow_comment) ? $object->workflow_comment : NULL;
+      workflow_execute_transition($object, $state_name, $workflow, $comment);
     }
     else {
       // Schedule the the time to change the state.
@@ -662,6 +663,8 @@ function workflow_allowable_transitions($current_state, $workflow, $roles = 'ALL
  * @param $node
  * @param $state_name
  *   The machine name of the target state.
+ * @param $workflow
+ *   The workflow object for this entity.
  * @param $comment
  *   A comment for the node's workflow history.
  * @param $force
@@ -670,7 +673,7 @@ function workflow_allowable_transitions($current_state, $workflow, $roles = 'ALL
  * @return int
  *   ID of new state.
  */
-function workflow_execute_transition($node, $state_name, $comment = NULL, $force = FALSE) {
+function workflow_execute_transition($node, $state_name, $workflow, $comment = NULL, $force = FALSE) {
   global $user;
   $old_state = workflow_node_current_state($node);
   if ($old_state == $state_name) {
@@ -700,7 +703,9 @@ function workflow_execute_transition($node, $state_name, $comment = NULL, $force
   // Make sure this transition is valid and allowed for the current user.
   // Check allowability of state change if user is not superuser (might be cron).
   if (($user->uid != 1) && !$force) {
-    if (!workflow_transition_allowed($tid, array_merge(array_keys($user->roles), array('author')))) {
+    $roles = $workflow->states[$old_state]->transitions[$state_name];
+    $allowed_roles = array_merge(array_keys($user->roles), array('author'));
+    if (!array_intersect($roles, $allowed_roles)) {
       watchdog('workflow', 'User %user not allowed to go from state %old to %new', array('%user' => $user->name, '%old' => $old_state, '%new' => $state_name, WATCHDOG_NOTICE));
       return;
     }

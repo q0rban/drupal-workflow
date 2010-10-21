@@ -267,7 +267,7 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         $state_name = $node->workflow;
       }
 
-      workflow_transition($node, $state_name);
+      workflow_transition($node, $state_name, $workflow);
       break;
 
     case 'delete':

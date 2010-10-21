@@ -95,8 +95,10 @@ function workflow_select_next_state_action($node, $context) {
     }
   }
 
-  // Fire the transition.
-  workflow_execute_transition($node, $new_state);
+  if ($workflow = workflow_get_workflow_for_type($node->type)) {
+    // Fire the transition.
+    workflow_execute_transition($node, $new_state, $workflow);
+  }
 }
 
 /**
@@ -108,7 +110,9 @@ function workflow_select_given_state_action($node, $context) {
     '%state' => check_plain($context['label']),
   );
   $comment = t($context['workflow_comment'], $t_args);
-  workflow_execute_transition($node, $context['target_state_name'], $comment, $context['force']);
+  if ($workflow = workflow_get_workflow_for_type($node->type)) {
+    workflow_execute_transition($node, $context['target_state_name'], $workflow, $comment, $context['force']);
+  }
 }
 
 /**
