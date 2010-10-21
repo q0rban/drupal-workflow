@@ -82,8 +82,6 @@ function workflow_load_all($reset = FALSE) {
 
     drupal_alter('workflows', $workflows);
 
-    dsm($workflows);
-
     cache_set('workflows', $workflows);
   }
 
