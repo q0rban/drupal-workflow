@@ -174,14 +174,14 @@ function workflow_get_label($name) {
 }
 
 /**
- * Create a workflow and its (creation) state.
+ * Save a workflow and its (creation) state.
  *
  * @param $workflow
  *   An array of values needed to create a workflow.
  * @return
  *   The saved workflow object.
  */
-function workflow_create($workflow) {
+function workflow_save($workflow) {
   $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
   $workflow += $default;
 
@@ -210,6 +210,7 @@ function workflow_create($workflow) {
 
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     menu_rebuild();
+    workflow_invalidate_cache();
   }
 
   return $workflow;
@@ -230,6 +231,7 @@ function workflow_update($workflow) {
 
   // Workflow name change affects tabs (local tasks), so force menu rebuild.
   menu_rebuild();
+  workflow_invalidate_cache();
 
   return $workflow;
 }

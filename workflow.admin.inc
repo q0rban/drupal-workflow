@@ -73,7 +73,7 @@ function workflow_add_form_submit($form, &$form_state) {
   $workflow['label'] = $values['label'];
   $workflow['name'] = strtolower($values['name']);
 
-  if ($workflow = workflow_create($workflow)) {
+  if ($workflow = workflow_save($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
     drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.', array('%label' => $workflow->label)), 'status');
     $form_state['redirect'] = 'admin/build/workflow/edit/'. $workflow->name .'/states';
@@ -280,7 +280,13 @@ function workflow_edit_form_validate($form, &$form_state) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_submit($form, &$form_state) {
-  workflow_update($form_state['values']);
+  $workflow = $form['#workflow'];
+  if ($workflow->export_type === WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
+  else {
+    workflow_update($form_state['values']);
+  }
   drupal_set_message(t('The workflow was updated.'));
 }
 
@@ -367,7 +373,7 @@ function workflow_transition_grid_form_submit($form, &$form_state) {
 
   $workflow = $form['#workflow'];
 
-  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+  if ($workflow->export_type === WORKFLOW_IN_CODE) {
     workflow_save($workflow);
   }
 
