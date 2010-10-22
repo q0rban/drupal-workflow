@@ -501,7 +501,7 @@ function workflow_states($workflow) {
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
 
-  $form['#states'] = $states = $workflow->states;
+  $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;
 
   foreach ($states as $state_name => $state) {
@@ -702,8 +702,8 @@ function _workflow_state_links($state) {
 
   if (!workflow_is_system_state($state->label)) {
     $links['workflow_overview_delete_state'] = array(
-      'title' => t('Delete'),
-      'href' => "admin/build/workflow/state/delete/{$state->workflow_name}/{$state->name}",
+      'title' => t('Disable'),
+      'href' => "admin/build/workflow/state/disable/{$state->workflow_name}/{$state->name}",
       'query' => drupal_get_destination(),
     );
   }
@@ -826,16 +826,16 @@ function workflow_states_form_submit($form, &$form_state) {
 /**
  * Form for confirmation of deleting a workflow state.
  *
- * @param $workflow_name
- *   The machine name of the workflow.
+ * @param $workflow
+ *   The workflow object.
  * @param $state_name
  *   The machine name of the state to delete.
  * @return
  *   Confirmation form array.
  */
-function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
-  $states = $form['#states'] = workflow_get_state_labels($workflow_name);
-  $label = $states[$state_name];
+function workflow_state_disable_form($form_state, $workflow, $state_name) {
+  $form['#workflow'] = $workflow;
+  $label = $workflow->states[$state_name]->label;
 
   // Don't allow users to delete a system state.
   if (workflow_is_system_state($label)) {
@@ -859,20 +859,20 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
       $form['new_state'] = array(
         '#type' => 'select',
         '#title' => t('State to be assigned to orphaned nodes'),
-        '#description' => format_plural($count, 'Since you are deleting a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.', 'Since you are deleting a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.'),
+        '#description' => format_plural($count, 'Since you are disabling a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.', 'Since you are disabling a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.'),
         '#options' => $states,
       );
     }
     else {
       $form['warning'] = array(
-        '#value' => format_plural($count, 'Since you are deleting the last workflow state in this workflow, the one remaining node which is in that state will have its workflow state removed. ', 'Since you are deleting the last workflow state in this workflow, @count nodes which are in that state will have their workflow state removed. '),
+        '#value' => format_plural($count, 'Since you are disabling the last workflow state in this workflow, the one remaining node which is in that state will have its workflow state removed. ', 'Since you are disabling the last workflow state in this workflow, @count nodes which are in that state will have their workflow state removed. '),
       );
     }
   }
 
   $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $workflow_name,
+    '#value' => $workflow->name,
   );
   $form['name'] = array(
     '#type' => 'value',
@@ -881,10 +881,10 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 
   return confirm_form(
     $form,
-    t('Are you sure you want to delete %title (and all its transitions)?', array('%title' => $label)),
+    t('Are you sure you want to disable %title (and all its transitions)?', array('%title' => $label)),
     !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
     t('This action cannot be undone.'),
-    t('Delete'),
+    t('Disable'),
     t('Cancel')
   );
 }
@@ -892,19 +892,24 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 /**
  * Submit handler for workflow state deletion form.
  *
- * @see workflow_state_delete_form()
+ * @see workflow_state_disable_form()
  */
-function workflow_state_delete_form_submit($form, &$form_state) {
-  $states = $form['#states'];
+function workflow_state_disable_form_submit($form, &$form_state) {
+  $workflow = $form['#workflow'];
+  $states = $workflow->states;
   $state_name = $form_state['values']['name'];
-  $label = $states[$state_name];
+  $label = $states[$state_name]->label;
+
   if ($form_state['values']['confirm'] == 1) {
+    if ($workflow->export_type === WORKFLOW_IN_CODE) {
+      workflow_save($workflow);
+    }
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
     workflow_state_delete($state_name, $new_state);
-    watchdog('workflow', 'Deleted workflow state %name', array('%name' => $label));
-    drupal_set_message(t('The workflow state %name was deleted.', array('%name' => $label)));
+    watchdog('workflow', 'Disabled workflow state %name', array('%name' => $label));
+    drupal_set_message(t('The workflow state %name was disabled.', array('%name' => $label)));
+    workflow_invalidate_cache();
   }
-  $form_state['redirect'] = 'admin/build/workflow';
 }
 
 /**

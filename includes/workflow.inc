@@ -290,7 +290,7 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
           $state->label = $workflow->label .': '. $state->label;
           $all_states[$name] = $state;
           // Keep the active only states in a separate array.
-          if (_workflow_state_is_active($state)) {
+          if (workflow_state_is_active($state)) {
             $states[$name] = $state;
           }
         }
@@ -368,37 +368,27 @@ function workflow_get_state_labels($workflow_name = NULL) {
  *
  * @param $name
  *   The machine name of the workflow state.
- * @param $active_only
- *   Boolean to indicate to only return active states. Defaults to FALSE.
  * @return
  *   The workflow state object.
  */
-function workflow_get_state($name, $active_only = FALSE) {
-  $sql = "SELECT * FROM {workflow_states} WHERE name = '%s'";
+function workflow_get_state($name) {
+  $states = workflow_get_states();
 
-  if ($active_only) {
-    $sql .= " AND status = 1";
-  }
-  
-  $result = db_query($sql, $name);
-  // State IDs are unique, so there should be only one row.
-  if ($state = db_fetch_object($result)) {
-    $state->label = check_plain(t($state->label));
-  }
-
-  return $state;
+  return $states[$name];
 }
 
 /**
- * Given the ID of a state, return its name.
+ * Given the machine name of a state, return its label.
  *
- * @param integer $sid
- *   The ID of the workflow state.
+ * @param $name
+ *   The machine name of the workflow state.
  * @return string
- *   The name of the workflow state.
+ *   The label of the workflow state.
  */
-function workflow_get_state_label($sid) {
-  return db_result(db_query('SELECT label FROM {workflow_states} WHERE sid = %d', $sid));
+function workflow_get_state_label($name) {
+  $state = workflow_get_state($name);
+
+  return $state->label;
 }
 
 

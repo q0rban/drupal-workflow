@@ -96,12 +96,12 @@ function workflow_menu() {
     'file' => 'workflow.admin.inc',
     'type' => MENU_LOCAL_TASK,
   );
-  $items['admin/build/workflow/state/delete'] = array(
-    'title' => 'Delete State',
+  $items['admin/build/workflow/state/disable/%workflow'] = array(
+    'title' => 'Disable State',
     'type' => MENU_CALLBACK,
     'access arguments' => array('administer workflow'),
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('workflow_state_delete_form'),
+    'page arguments' => array('workflow_state_disable_form', 5, 6),
     'file' => 'workflow.admin.inc',
   );
   $items['admin/build/workflow/delete'] = array(
