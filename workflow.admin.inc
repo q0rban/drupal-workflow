@@ -754,9 +754,31 @@ function workflow_state_validate_machine_name($element, &$form_state) {
   }
 
   // Ensure that this machine name is unique.
-  if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
+  if (workflow_state_machine_name_exists($machine_name)) {
     form_error($element, t('A state with the machine name %name already exists.', array('%name' => $machine_name)));
   }
+}
+
+/**
+ * Test to see if a state already exists with the requested machine name.
+ *
+ * @param $name
+ *   The requested state machine name.
+ * @return
+ *   Boolean whether or not the machine name is already in use.
+ */
+function workflow_state_machine_name_exists($name) {
+  static $names = array();
+
+  if (empty($names)) {
+    foreach (workflow_load_all() as $workflow) {
+      foreach ($workflow->states as $state) {
+        $names[] = $state->name;
+      }
+    }
+  }
+
+  return in_array($name, $names);
 }
 
 /**
