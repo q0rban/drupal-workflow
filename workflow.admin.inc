@@ -253,24 +253,8 @@ function workflow_edit_form_validate($form, &$form_state) {
     }
   }
   else {
-  // No workflow name was provided.
+    // No workflow name was provided.
     form_set_error('label', t('Please provide a nonblank label for this workflow.'));
-  }
-
-  // Make sure 'author' is checked for (creation) -> [something].
-  $creation_state = _workflow_creation_state($machine_name);
-  if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
-    foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
-      if ($roles['author']) {
-        $author_has_permission = TRUE;
-        break;
-      }
-    }
-  }
-  $state_count = db_result(db_query("SELECT COUNT(sid) FROM {workflow_states} WHERE workflow_name = '%s'", $machine_name));
-  if (empty($author_has_permission) && $state_count > 1) {
-    form_set_error('transitions', t('Please give the author permission to go from %creation to at least one state!',
-      array('%creation' => '(creation)')));
   }
 }
 
@@ -357,9 +341,33 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
 }
 
 /**
+ * Validation handler for the transition_grid_form.
+ *
+ * @see workflow_transition_grid_form().
+ */
+function workflow_transition_grid_form_validate($form, &$form_state) {
+  $workflow = $form['#workflow'];
+  // Make sure 'author' is checked for (creation) -> [something].
+  $creation_state = _workflow_creation_state($workflow->name);
+  if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
+    foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
+      if ($roles['author']) {
+        $author_has_permission = TRUE;
+        break;
+      }
+    }
+  }
+  $state_count = count($workflow->states);
+  if (empty($author_has_permission) && $state_count > 1) {
+    form_set_error('transitions', t('Please give the author permission to go from %creation to at least one state!',
+      array('%creation' => '(creation)')));
+  }
+}
+
+/**
  * Submit handler for the workflow editing form.
  *
- * @see workflow_edit_form()
+ * @see workflow_transition_grid_form().
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
   $values = $form_state['values']['transitions'];
