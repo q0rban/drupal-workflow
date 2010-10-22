@@ -262,83 +262,77 @@ function workflow_deletewf($name) {
 
 /**
  * Load all database and code workflow states. If $workflow_name is not passed,
- * all states for all workflows are given.
+ * all active states for all workflows are given. If $all is TRUE, disabled
+ * states will also be returned
  *
  * @param $workflow_name
  *   The machine name of the workflow.
+ * @param $all
+ *   Boolean, whether or not to return both disabled and active states.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_states($workflow_name = NULL) {
+function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   $workflows = workflow_load_all();
 
   if (is_null($workflow_name)) {
+    static $states;
     static $all_states;
 
     if (is_null($all_states)) {
-      $all_states = array();
+      $all_states = $states = array();
+
+      // We iterate through all the states so that we can prepend the Workflow
+      // label to the state label.
       foreach ($workflows as $workflow) {
         $states = $workflow->states;
         foreach ($states as $name => $state) {
           $state->label = $workflow->label .': '. $state->label;
           $all_states[$name] = $state;
+          // Keep the active only states in a separate array.
+          if (_workflow_state_is_active($state)) {
+            $states[$name] = $state;
+          }
         }
       }
     }
 
-    return $all_states;
+    return $all ? $all_states : $states;
   }
 
-  return $workflows[$workflow_name]->states;
+  $states = $workflows[$workflow_name]->states;
+  return $all ? $states : array_filter($states, 'workflow_state_is_active');
 }
 
 /**
- * Load workflow states for a workflow from the database. If $workflow_name is
- * not passed, all states for all workflows are given. States that have been
- * deleted are not included unless $all is TRUE.
+ * Return the status for a workflow state.
+ *
+ * @param $state
+ *   The workflow state object.
+ * @return
+ *   Boolean, whether the state is active or not.
+ */
+function workflow_state_is_active($state) {
+  return (bool) $state->status;
+}
+
+/**
+ * Load workflow states for a workflow from the database.
  *
  * @param $workflow_name
  *   The machine name of the workflow.
- * @param $all
- *   If TRUE, will return all workflows, regardless of status.
  * @return
  *   An array of workflow states.
  */
-function workflow_get_db_states($workflow_name = NULL, $all = FALSE) {
-  $states = $query_args = array();
-  $schema = drupal_get_schema('workflow_states');
-
-  // Build up an array of WHERE clause arguments.
-  $args = $all ? array() : array('status' => 1);
-  if (isset($workflow_name)) {
-    $args['workflow_name'] = $workflow_name;
-  }
+function workflow_get_db_states($workflow_name) {
+  $states = array();
 
   // Construct the query.
-  $query = "SELECT * FROM {workflow_states}";
-  if (!empty($args)) {
-    $conditions = array();
-    foreach ($args as $key => $value) {
-      if (isset($schema['fields'][$key])) {
-        $conditions[] = "$key = " . db_type_placeholder($schema['fields'][$key]['type']);
-        $query_args[] = $value;
-      }
-    }
-    // Create the WHERE clause.
-    $query .= " WHERE " . implode(' AND ', $conditions);
-  }
-  $query .= " ORDER BY weight, label";
+  $query = "SELECT * FROM {workflow_states} WHERE workflow_name = '%s' ORDER BY weight, label";
 
-  $result = db_query($query, $query_args);
+  $result = db_query($query, $workflow_name);
   while ($state = db_fetch_object($result)) {
     $state->label = check_plain(t($state->label));
-
-    // If we don't have a workflow_name, load up the associated workflow and
-    // prepend the Workflow Label to the State Label.
-    if (empty($workflow_name)) {
-      $workflow = workflow_load($state->workflow_name);
-      $state->label = $workflow->label .': '. $state->label;
-    }
 
     $state->transitions = workflow_transitions_load($state->name);
 
@@ -602,11 +596,13 @@ function workflow_allowable_transitions($current_state, $workflow, $account = NU
   $available_transitions = $workflow->states[$current_state]->transitions;
 
   foreach ($workflow->states as $state_name => $state) {
-    $allowed_roles = $available_transitions[$state_name];
-    if ($account->uid == 1  // Superuser.
-      || $state_name == $current_state // Include current state for same-state transitions.
-      || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
-      $transitions[$state_name] = $state->label;
+    if (workflow_state_is_active($state)) {
+      $allowed_roles = $available_transitions[$state_name];
+      if ($account->uid == 1  // Superuser.
+        || $state_name == $current_state // Include current state for same-state transitions.
+        || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
+        $transitions[$state_name] = $state->label;
+      }
     }
   }
 

@@ -14,7 +14,7 @@ function workflow_tab_page($node = NULL) {
   $workflow = workflow_get_workflow_for_type($node->type);
   $states_per_page = variable_get('workflow_states_per_page', 20);
 
-  $states = workflow_get_states($workflow->name, TRUE);
+  $states = $workflow->states;
   $all_states = workflow_get_states(NULL, TRUE);
   $current_state_name = workflow_node_current_state($node);
   $current_state = $states[$current_state_name];
@@ -38,7 +38,7 @@ function workflow_tab_page($node = NULL) {
       // specially themed.
       $current_themed = TRUE;
     }
-    elseif (!$states[$history->state_name]->status) {
+    elseif (!workflow_state_is_active($states[$history->state_name])) {
       // The state has been deleted, but we include it in the history.
       $state_label = theme('workflow_deleted_state', $state->label);
       $footer_needed = TRUE;
