@@ -126,50 +126,45 @@ function workflow_delete_form_submit($form, &$form_state) {
 /**
  * View workflow permissions by role
  *
- * @param $name
- *   The machine name of the workflow.
+ * @param $workflow
+ *   The workflow object.
  */
-function workflow_permissions($name) {
-  $all = array();
+function workflow_permissions($workflow) {
+  $map = array();
   $roles = array('author' => t('author')) + user_roles();
-  foreach ($roles as $role => $value) {
-    $all[$role]['name'] = $value;
-  }
-  $result = db_query(
-    'SELECT t.roles, s1.label AS state_label, s2.label AS target_state_label ' .
-    'FROM {workflow_transitions} t ' .
-    'INNER JOIN {workflow_states} s1 ON s1.name = t.state_name '.
-    'INNER JOIN {workflow_states} s2 ON s2.name = t.target_state_name '.
-    "WHERE s1.workflow_name = '%s' " .
-    'ORDER BY s1.weight ASC , s1.label ASC , s2.weight ASC , s2.label ASC',
-    $name);
 
-  while ($data = db_fetch_object($result)) {
-    foreach (explode(',', $data->roles) as $role) {
-      $all[$role]['transitions'][] = array(check_plain(t($data->state_label)), WORKFLOW_ARROW, check_plain(t($data->target_state_label)));
+  foreach ($workflow->states as $state) {
+    foreach ($state->transitions as $to_state => $allowed_roles) {
+      foreach ($allowed_roles as $role) {
+        $map[$role]['transitions'][] = array($workflow->states[$state->name]->label, WORKFLOW_ARROW, $workflow->states[$to_state]->label);
+      }
     }
   }
 
-  $header = array(t('From'), '', t('To'));
-  return theme('workflow_permissions', $header, $all);
+  // Set up the labels.
+  foreach (array_keys($map) as $role) {
+    $map[$role]['name'] = $roles[$role];
+  }
+
+  return theme('workflow_permissions', $map);
 }
 
 /**
  * Theme the workflow permissions view.
  */
-function theme_workflow_permissions($header, $all) {
-  $output = '';
-  foreach ($all as $role => $value) {
-    $output .= '<h3>'. t("%role may do these transitions:", array('%role' => $value['name'])) .'</h3>';
-    if (!empty($value['transitions'])) {
-      $output .= theme('table', $header, $value['transitions']) . '<p></p>';
-    }
-    else {
-      $output .= '<table><tbody><tr class="odd"><td>' . t('None') . '</td><td></tr></tbody></table><p></p>';
-    }
+function theme_workflow_permissions($map) {
+  $header = array(t('From'), '', t('To'));
+  $rows = array();
+
+  foreach ($map as $role => $value) {
+    $rows[] = array(
+      'data' => array('<h3>'. t("%role may do these transitions:", array('%role' => $value['name'])) .'</h3>'),
+      'colspan' => 3,
+    );
+    $rows = array_merge($rows, $value['transitions']);
   }
 
-  return $output;
+  return theme('table', $header, $rows);
 }
 
 /**
@@ -349,7 +344,7 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
     '#collapsible' => TRUE,
   );
   $form['permissions']['summary'] = array(
-    '#value' => workflow_permissions($workflow->name),
+    '#value' => workflow_permissions($workflow),
   );
 
   return $form;

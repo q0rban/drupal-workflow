@@ -201,8 +201,7 @@ function workflow_theme() {
     ),
     'workflow_permissions' => array(
       'arguments' => array(
-        'header' => array(),
-        'all' => array(),
+        'map' => array(),
       ),
     ),
   );
