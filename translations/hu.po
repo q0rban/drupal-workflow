@@ -322,7 +322,7 @@ msgid ""
 msgstr "Nem lett munkafolyamat hozzáadva. <a href=\"@link\">Munkafolyamat hozzáadása</a>?"
 
 #: workflow.module:1182
-msgid "Are you sure you want to delete %title (and all its transitions)?"
+msgid "Are you sure you want to disable %title (and all its transitions)?"
 msgstr ""
 "Valóban törölve legyen az alábbi munkafolyamat (és az összes átmenete): %"
 "title?"

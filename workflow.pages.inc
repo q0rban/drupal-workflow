@@ -14,13 +14,13 @@ function workflow_tab_page($node = NULL) {
   $workflow = workflow_get_workflow_for_type($node->type);
   $states_per_page = variable_get('workflow_states_per_page', 20);
 
-  $states = workflow_get_states($workflow->name, TRUE);
+  $states = $workflow->states;
   $all_states = workflow_get_states(NULL, TRUE);
   $current_state_name = workflow_node_current_state($node);
-  $current_state = $states[$current_state_name];
+  $current_state = $all_states[$current_state_name];
 
   $output = '<p>'. t('Current state: !state', array('!state' => theme('workflow_current_state', $current_state->label))) . "</p>\n";
-  $output .= drupal_get_form('workflow_tab_form', $node, $workflow->name, $states, $current_state);
+  $output .= drupal_get_form('workflow_tab_form', $node, $workflow, $states, $current_state);
 
   $rows = array();
   $result = pager_query("SELECT h.*, u.name "
@@ -38,7 +38,7 @@ function workflow_tab_page($node = NULL) {
       // specially themed.
       $current_themed = TRUE;
     }
-    elseif (!$states[$history->state_name]->status) {
+    elseif (!workflow_state_is_active($states[$history->state_name])) {
       // The state has been deleted, but we include it in the history.
       $state_label = theme('workflow_deleted_state', $state->label);
       $footer_needed = TRUE;
@@ -119,14 +119,13 @@ function theme_workflow_deleted_state($label) {
  * @return
  *   Form definition array.
  */
-function workflow_tab_form($form_state, $node, $workflow_name, $states, $current_state) {
+function workflow_tab_form($form_state, $node, $workflow, $states, $current_state) {
   $form['#tab'] = TRUE;
-  $choices = workflow_field_choices($node);
+  $choices = workflow_field_choices($node, $workflow);
 
-  $min = ($current_state->name == _workflow_creation_state($name)) ? 1 : 2;
+  $min = ($current_state->name == _workflow_creation_state($workflow->name)) ? 1 : 2;
   // Only build form if user has possible target state(s).
   if (count($choices) >= $min) {
-    $workflow = workflow_load($workflow_name);
     $form['#wf'] = $workflow;
     // See if scheduling information is present.
     if ($node->_workflow_scheduled_timestamp && $node->_workflow_scheduled_state_name) {
@@ -144,7 +143,7 @@ function workflow_tab_form($form_state, $node, $workflow_name, $states, $current
 
     // Include the same form elements here that are included on a
     // regular node editing page. $form is modified by reference.
-    workflow_node_form($form, $form_state, t('Change %s state', array('%s' => $workflow->label)), $workflow_name, $default_value, $choices, $timestamp, $comment);
+    workflow_node_form($form, $form_state, t('Change %s state', array('%s' => $workflow->label)), $workflow->name, $default_value, $choices, $timestamp, $comment);
 
     $form['node'] = array(
       '#type' => 'value',

@@ -73,7 +73,7 @@ function workflow_add_form_submit($form, &$form_state) {
   $workflow['label'] = $values['label'];
   $workflow['name'] = strtolower($values['name']);
 
-  if ($workflow = workflow_create($workflow)) {
+  if ($workflow = workflow_save($workflow)) {
     watchdog('workflow', 'Created workflow %label', array('%label' => $workflow->label));
     drupal_set_message(t('The workflow %label was created. You should now add states to your workflow.', array('%label' => $workflow->label)), 'status');
     $form_state['redirect'] = 'admin/build/workflow/edit/'. $workflow->name .'/states';
@@ -253,24 +253,8 @@ function workflow_edit_form_validate($form, &$form_state) {
     }
   }
   else {
-  // No workflow name was provided.
+    // No workflow name was provided.
     form_set_error('label', t('Please provide a nonblank label for this workflow.'));
-  }
-
-  // Make sure 'author' is checked for (creation) -> [something].
-  $creation_state = _workflow_creation_state($machine_name);
-  if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
-    foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
-      if ($roles['author']) {
-        $author_has_permission = TRUE;
-        break;
-      }
-    }
-  }
-  $state_count = db_result(db_query("SELECT COUNT(sid) FROM {workflow_states} WHERE workflow_name = '%s'", $machine_name));
-  if (empty($author_has_permission) && $state_count > 1) {
-    form_set_error('transitions', t('Please give the author permission to go from %creation to at least one state!',
-      array('%creation' => '(creation)')));
   }
 }
 
@@ -280,7 +264,13 @@ function workflow_edit_form_validate($form, &$form_state) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_submit($form, &$form_state) {
-  workflow_update($form_state['values']);
+  $workflow = $form['#workflow'];
+  if ($workflow->export_type === WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
+  else {
+    workflow_update($form_state['values']);
+  }
   drupal_set_message(t('The workflow was updated.'));
 }
 
@@ -351,9 +341,33 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
 }
 
 /**
+ * Validation handler for the transition_grid_form.
+ *
+ * @see workflow_transition_grid_form().
+ */
+function workflow_transition_grid_form_validate($form, &$form_state) {
+  $workflow = $form['#workflow'];
+  // Make sure 'author' is checked for (creation) -> [something].
+  $creation_state = _workflow_creation_state($workflow->name);
+  if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
+    foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
+      if ($roles['author']) {
+        $author_has_permission = TRUE;
+        break;
+      }
+    }
+  }
+  $state_count = count($workflow->states);
+  if (empty($author_has_permission) && $state_count > 1) {
+    form_set_error('transitions', t('Please give the author permission to go from %creation to at least one state!',
+      array('%creation' => '(creation)')));
+  }
+}
+
+/**
  * Submit handler for the workflow editing form.
  *
- * @see workflow_edit_form()
+ * @see workflow_transition_grid_form().
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
   $values = $form_state['values']['transitions'];
@@ -367,7 +381,7 @@ function workflow_transition_grid_form_submit($form, &$form_state) {
 
   $workflow = $form['#workflow'];
 
-  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+  if ($workflow->export_type === WORKFLOW_IN_CODE) {
     workflow_save($workflow);
   }
 
@@ -487,7 +501,7 @@ function workflow_states($workflow) {
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
 
-  $form['#states'] = $states = $workflow->states;
+  $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;
 
   foreach ($states as $state_name => $state) {
@@ -688,8 +702,8 @@ function _workflow_state_links($state) {
 
   if (!workflow_is_system_state($state->label)) {
     $links['workflow_overview_delete_state'] = array(
-      'title' => t('Delete'),
-      'href' => "admin/build/workflow/state/delete/{$state->workflow_name}/{$state->name}",
+      'title' => t('Disable'),
+      'href' => "admin/build/workflow/state/disable/{$state->workflow_name}/{$state->name}",
       'query' => drupal_get_destination(),
     );
   }
@@ -740,9 +754,31 @@ function workflow_state_validate_machine_name($element, &$form_state) {
   }
 
   // Ensure that this machine name is unique.
-  if (db_result(db_query("SELECT count(*) FROM {workflow_states} WHERE name = '%s'", $machine_name))) {
+  if (workflow_state_machine_name_exists($machine_name)) {
     form_error($element, t('A state with the machine name %name already exists.', array('%name' => $machine_name)));
   }
+}
+
+/**
+ * Test to see if a state already exists with the requested machine name.
+ *
+ * @param $name
+ *   The requested state machine name.
+ * @return
+ *   Boolean whether or not the machine name is already in use.
+ */
+function workflow_state_machine_name_exists($name) {
+  static $names = array();
+
+  if (empty($names)) {
+    foreach (workflow_load_all() as $workflow) {
+      foreach ($workflow->states as $state) {
+        $names[] = $state->name;
+      }
+    }
+  }
+
+  return in_array($name, $names);
 }
 
 /**
@@ -790,16 +826,16 @@ function workflow_states_form_submit($form, &$form_state) {
 /**
  * Form for confirmation of deleting a workflow state.
  *
- * @param $workflow_name
- *   The machine name of the workflow.
+ * @param $workflow
+ *   The workflow object.
  * @param $state_name
  *   The machine name of the state to delete.
  * @return
  *   Confirmation form array.
  */
-function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
-  $states = $form['#states'] = workflow_get_state_labels($workflow_name);
-  $label = $states[$state_name];
+function workflow_state_disable_form($form_state, $workflow, $state_name) {
+  $form['#workflow'] = $workflow;
+  $label = $workflow->states[$state_name]->label;
 
   // Don't allow users to delete a system state.
   if (workflow_is_system_state($label)) {
@@ -823,20 +859,20 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
       $form['new_state'] = array(
         '#type' => 'select',
         '#title' => t('State to be assigned to orphaned nodes'),
-        '#description' => format_plural($count, 'Since you are deleting a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.', 'Since you are deleting a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.'),
+        '#description' => format_plural($count, 'Since you are disabling a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.', 'Since you are disabling a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state.'),
         '#options' => $states,
       );
     }
     else {
       $form['warning'] = array(
-        '#value' => format_plural($count, 'Since you are deleting the last workflow state in this workflow, the one remaining node which is in that state will have its workflow state removed. ', 'Since you are deleting the last workflow state in this workflow, @count nodes which are in that state will have their workflow state removed. '),
+        '#value' => format_plural($count, 'Since you are disabling the last workflow state in this workflow, the one remaining node which is in that state will have its workflow state removed. ', 'Since you are disabling the last workflow state in this workflow, @count nodes which are in that state will have their workflow state removed. '),
       );
     }
   }
 
   $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $workflow_name,
+    '#value' => $workflow->name,
   );
   $form['name'] = array(
     '#type' => 'value',
@@ -845,10 +881,10 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 
   return confirm_form(
     $form,
-    t('Are you sure you want to delete %title (and all its transitions)?', array('%title' => $label)),
+    t('Are you sure you want to disable %title (and all its transitions)?', array('%title' => $label)),
     !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
     t('This action cannot be undone.'),
-    t('Delete'),
+    t('Disable'),
     t('Cancel')
   );
 }
@@ -856,19 +892,24 @@ function workflow_state_delete_form($form_state, $workflow_name, $state_name) {
 /**
  * Submit handler for workflow state deletion form.
  *
- * @see workflow_state_delete_form()
+ * @see workflow_state_disable_form()
  */
-function workflow_state_delete_form_submit($form, &$form_state) {
-  $states = $form['#states'];
+function workflow_state_disable_form_submit($form, &$form_state) {
+  $workflow = $form['#workflow'];
+  $states = $workflow->states;
   $state_name = $form_state['values']['name'];
-  $label = $states[$state_name];
+  $label = $states[$state_name]->label;
+
   if ($form_state['values']['confirm'] == 1) {
+    if ($workflow->export_type === WORKFLOW_IN_CODE) {
+      workflow_save($workflow);
+    }
     $new_state = isset($form_state['values']['new_state']) ? $form_state['values']['new_state'] : NULL;
     workflow_state_delete($state_name, $new_state);
-    watchdog('workflow', 'Deleted workflow state %name', array('%name' => $label));
-    drupal_set_message(t('The workflow state %name was deleted.', array('%name' => $label)));
+    watchdog('workflow', 'Disabled workflow state %name', array('%name' => $label));
+    drupal_set_message(t('The workflow state %name was disabled.', array('%name' => $label)));
+    workflow_invalidate_cache();
   }
-  $form_state['redirect'] = 'admin/build/workflow';
 }
 
 /**
@@ -884,11 +925,7 @@ function workflow_types_form() {
 
   $options = array('<'. t('None') .'>') + $workflows;
 
-  $type_map = array();
-  $result = db_query("SELECT workflow_name, type FROM {workflow_type_map}");
-  while ($data = db_fetch_object($result)) {
-    $type_map[$data->type] = $data->workflow_name;
-  }
+  $type_map = workflow_node_type_map_load();
 
   $form['#theme'] = 'workflow_types_form';
   $form['#tree'] = TRUE;

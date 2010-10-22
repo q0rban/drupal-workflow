@@ -248,11 +248,11 @@ msgid "State to be assigned to orphaned nodes"
 msgstr "何も状態を割り当てられていないノードに割り当てる状態"
 
 #: workflow.admin.inc:594
-msgid "Are you sure you want to delete %title (and all its transitions)?"
+msgid "Are you sure you want to disable %title (and all its transitions)?"
 msgstr "%title (およびそのすべての遷移) を本当に削除しますか？"
 
 #: workflow.admin.inc:613
-msgid "The workflow state %name was deleted."
+msgid "The workflow state %name was disabled."
 msgstr "ワークフローの状態 %name を削除しました。"
 
 #: workflow.admin.inc:639
@@ -303,12 +303,12 @@ msgid "Created workflow state %name"
 msgstr "ワークフローの状態 %name を作成しました"
 
 #: workflow.admin.inc:612
-msgid "Deleted workflow state %name"
+msgid "Disabled workflow state %name"
 msgstr "ワークフローの状態 %name を削除しました"
 
 #: workflow.admin.inc:578
-msgid "Since you are deleting a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state."
-msgid_plural "Since you are deleting a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state."
+msgid "Since you are disabling a workflow state, a node which is in that state will be orphaned, and must be reassigned to a new state. Please choose the new state."
+msgid_plural "Since you are disabling a workflow state, @count nodes which are in that state will be orphaned, and must be reassigned to a new state. Please choose the new state."
 msgstr[0] "ワークフローの状態を削除すると、その状態にあったノードは状態が割り当てられていないことになるため、新しい状態を割り当てなおす必要があります。新しい状態を選択してください。"
 msgstr[1] "ワークフローの状態を削除すると、その状態にあった @count 個のノードは状態が割り当てられていないことになるため、新しい状態を割り当てなおす必要があります。新しい状態を選択してください。"
 

@@ -249,7 +249,7 @@ msgid "add a workflow"
 msgstr "ajouter un flux de travaux"
 
 #: workflow.module:970
-msgid "Are you sure you want to delete %title (and all its transitions)?"
+msgid "Are you sure you want to disable %title (and all its transitions)?"
 msgstr ""
 "Êtes vous certain de vouloir supprimer %title (et toutes ses transitions) ?"
 
