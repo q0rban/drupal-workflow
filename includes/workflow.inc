@@ -275,11 +275,11 @@ function workflow_deletewf($name) {
 function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   $workflows = workflow_load_all();
 
-  if (is_null($workflow_name)) {
+  if (!isset($workflow_name)) {
     static $states;
     static $all_states;
 
-    if (is_null($all_states)) {
+    if (!isset($all_states)) {
       $all_states = $states = array();
 
       // We iterate through all the states so that we can prepend the Workflow
@@ -788,53 +788,6 @@ function workflow_field_choices($object, $workflow) {
   $transitions = workflow_allowable_transitions($current_state, $workflow, $account);
 
   return $transitions;
-}
-
-/**
- * Get the current state of a given node.
- *
- * @param $node
- *   The node to check.
- * @return
- *   The machine name of the current state.
- */
-function workflow_node_current_state($node) {
-  $state_name = FALSE;
-
-  // There is no nid when creating a node.
-  if (!empty($node->nid)) {
-    $state_name = db_result(db_query('SELECT state_name FROM {workflow_node} WHERE nid = %d', $node->nid));
-  }
-
-  if (!$state_name && !empty($node->type)) {
-    // No current state. Use creation state.
-    $workflow = workflow_get_workflow_for_type($node->type);
-    $state_name = _workflow_creation_state($workflow->name);
-  }
-  return $state_name;
-}
-
-/**
- * Put a node into a state.
- * No permission checking here; only call this from other functions that know
- * what they're doing.
- *
- * @see workflow_execute_transition()
- *
- * @param object $node
- * @param $state_name
- *   The machine name of the target state.
- */
-function _workflow_node_to_state($node, $state_name, $comment = NULL) {
-  global $user;
-  $node->workflow_stamp = time();
-  if (db_result(db_query("SELECT nid FROM {workflow_node} WHERE nid = %d", $node->nid))) {
-    db_query("UPDATE {workflow_node} SET state_name = '%s', uid = %d, stamp = %d WHERE nid = %d", $state_name, $user->uid, $node->workflow_stamp, $node->nid);
-  }
-  else {
-    db_query("INSERT INTO {workflow_node} (nid, state_name, uid, stamp) VALUES (%d, '%s', %d, %d)", $node->nid, $state_name, $user->uid, $node->workflow_stamp);
-  }
-  _workflow_write_history($node, $state_name, $comment);
 }
 
 /**

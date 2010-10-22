@@ -250,23 +250,24 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // For example, a new node must move from (creation) to some
       // initial state.
       if (empty($node->workflow)) {
-        $choices = workflow_field_choices($node);
+        $workflow = workflow_get_workflow_for_type($node->type);
+        $choices = workflow_field_choices($node, $workflow);
         $keys = array_keys($choices);
-        $state_name = array_shift($keys);
+        $node->workflow = array_shift($keys);
       }
-      // Note no break; fall through to 'update' case.
+
+      workflow_transition($node, $node->workflow, $workflow);
+      break;
+
     case 'update':
-      // Do nothing if there is no workflow for this node type.
-      if (!($workflow = workflow_get_workflow_for_type($node->type))) {
-        break;
-      }
+      // Load up the workflow from the state stored in ->workflow, not by
+      // workflow_get_workflow_for_type(). The reason we do this is because the
+      // workflow may have changed on this particular node, due to lack of
+      // restrictions on the workflow_types_form().
+      $state = workflow_get_state($node->workflow);
+      $workflow = workflow_load($state->workflow_name);
 
-      // Get new state from value of workflow form field, stored in $node->workflow.
-      if (!isset($state_name)) {
-        $state_name = $node->workflow;
-      }
-
-      workflow_transition($node, $state_name, $workflow);
+      workflow_transition($node, $state->name, $workflow);
       break;
 
     case 'delete':
@@ -584,10 +585,9 @@ function workflow_token_values($type, $object = NULL) {
     case 'workflow':
       $node = (object)$object;
 
-      if ($machine_name = workflow_get_workflow_for_type($node->type)) {
-        $workflow = workflow_load($machine_name);
+      if ($workflow = workflow_get_workflow_for_type($node->type)) {
         $values['workflow-name'] = $workflow->label;
-        $values['workflow-machine-name'] = $machine_name;
+        $values['workflow-machine-name'] = $workflow->name;
         $states = $workflow->states;
       }
       else {

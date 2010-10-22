@@ -925,11 +925,7 @@ function workflow_types_form() {
 
   $options = array('<'. t('None') .'>') + $workflows;
 
-  $type_map = array();
-  $result = db_query("SELECT workflow_name, type FROM {workflow_type_map}");
-  while ($data = db_fetch_object($result)) {
-    $type_map[$data->type] = $data->workflow_name;
-  }
+  $type_map = workflow_node_type_map_load();
 
   $form['#theme'] = 'workflow_types_form';
   $form['#tree'] = TRUE;
