@@ -726,8 +726,6 @@ function workflow_transition_allowed($workflow, $from_state, $to_state, $account
   $roles = $workflow->states[$from_state]->transitions[$to_state];
   $allowed_roles = array_keys($account->roles);
 
-  dsm($allowed_roles);
-
   return (bool) array_intersect($roles, $allowed_roles);
 }
 

@@ -27,6 +27,21 @@ function workflow_uninstall() {
  */
 function workflow_schema() {
   $schema['workflows'] = array(
+    'export' => array(
+      'key' => 'name',
+      'key name' => 'Machine Name',
+      'object' => 'workflow',
+      //'bulk export' => FALSE,
+      'export callback' => 'workflow_export_callback',
+      'can disable' => FALSE,
+      'identifier' => 'workflow',
+      'api' => array(
+        'owner' => 'workflow',
+        'api' => 'workflow',
+        'minimum_version' => 1,
+        'current_version' => 1,
+      )      
+    ),
     'fields' => array(
       'wid'          => array('type' => 'serial', 'not null' => TRUE),
       'name'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
@@ -35,21 +50,7 @@ function workflow_schema() {
       'options'      => array('type' => 'text', 'size' => 'big', 'not null' => FALSE, 'serialize' => TRUE)),
     'primary key'    => array('wid'),
     'unique keys'    => array('name' => array('name')),    
-    'indexes' => array('op_workflows_name' => array('name')),
-    'export' => array(
-      'key' => 'name',
-      'key name' => 'Machine Name',
-      'identifier' => 'workflow',
-      'default hook' => 'workflow_default_worfklows',
-      //'load all callback' => 'op_workflows_get_all',
-      'api' => array(
-        'owner' => 'workflow',
-        'api' => 'workflow_default_worfklows',  // Base name for api include files.
-        'minimum_version' => 1,
-        'current_version' => 1,
-      )
-    )    
-    
+    'indexes' => array('op_workflows_name' => array('name')),        
   );
   $schema['workflow_type_map'] = array(
     'fields' => array(
@@ -71,16 +72,24 @@ function workflow_schema() {
       'target_state_name' => array('target_state_name')),
   );
   $schema['workflow_states'] = array(
+    'export' => array(
+      'can disable' => FALSE,
+      'identifier' => 'workflow_state',
+      //-- Allow states to be auto-loaded as part of workflow, but not independently
+      'bulk export' => FALSE,
+    ),
     'fields' => array(
       'sid'           => array('type' => 'serial', 'not null' => TRUE),
       'name'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'label'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
-      'weight'        => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
+      //-- Tinyints are interpreted as booleans by CTools. To avoid that we need custom exporter (or we'd have to change field type).
+      'weight'        => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4', 
+                               'export callback' => 'workflow_state_weight_exporter'),
       'sysid'         => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '4'),
       'status'        => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 1, 'disp-width' => '4')),
     'primary key'     => array('sid'),
-    'unique keys'     => array('name' => array('name')),
+    'unique keys'     => array('name_and_workflow' => array('name', 'workflow_name')),
     'indexes' => array(
       'sysid'         => array('sysid'),
       'workflow_name' => array('workflow_name')),

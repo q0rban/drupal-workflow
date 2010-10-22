@@ -760,9 +760,9 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  */
 function workflow_include_files() {
   static $finished;
-
+  
   if (!$finished) {
-    $files = array('workflow', 'workflow.actions', 'workflow.node', 'workflow.classes.inc');
+    $files = array('workflow', 'workflow.actions', 'workflow.node', 'workflow.classes');
     foreach ($files as $file) {
       module_load_include('inc', 'workflow', 'includes/'. $file);
     }
