@@ -33,6 +33,11 @@ function workflow_schema() {
       'object' => 'workflow',
       //'bulk export' => FALSE,
       'export callback' => 'workflow_export_callback',
+      'create callback' => 'workflow_export_crud_new',
+      'load callback' => 'workflow_export_crud_load',
+      'save callback' => 'workflow_export_crud_save',
+      'delete callback' => 'workflow_export_crud_delete',
+      
       'can disable' => FALSE,
       'identifier' => 'workflow',
       'api' => array(
@@ -61,6 +66,12 @@ function workflow_schema() {
       'workflow_name' => array('workflow_name')),
   );
   $schema['workflow_transitions'] = array(
+    'export' => array(
+      'can disable' => FALSE,
+      'identifier' => 'workflow_transition',
+      //-- Allow states to be auto-loaded as part of workflow, but not independently
+      'bulk export' => FALSE,
+    ),  
     'fields' => array(
       'tid'               => array('type' => 'serial', 'not null' => TRUE),
       'state_name'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),

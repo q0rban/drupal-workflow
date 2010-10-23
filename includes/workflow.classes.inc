@@ -23,6 +23,19 @@ class workflow_state {
 }
 
 /**
+* Workflow Transition class
+*/
+class workflow_transition {
+  
+  var $tid;
+  var $state_name;
+  var $target_state_name;  
+  var $roles;
+  
+}
+
+
+/**
 * Workflow class
 */
 class workflow {
@@ -69,29 +82,6 @@ class workflow {
         return explode(",", $tab_roles);
       }      
   }
-
-
-  /**
-  * Query workflows table in the database
-  *
-  * @param $workflow_name
-  *   The machine name of the workflow
-  *
-  * @return
-  *   The workflow object with data populated just from the "workflows" table.
-  */
-  static function query_workflow($workflow_name) {
-    if (empty($workflow_name)) {
-      return array();
-    }
-    
-    $result = db_query("SELECT * FROM {workflows} WHERE name = '%s'", $workflow_name);
-    
-    // $name is a unique field. We can only get one result
-    $row = db_fetch_typed_object($result, 'workflow');
-    $row->options = unserialize($row->options);
-    return $row;
-  }
   
   /**
   * Query database for the states associated with the current workflow 
@@ -117,7 +107,6 @@ class workflow {
     
     $states = array();
     while ($row = db_fetch_typed_object($result, 'workflow_state')) {
-      //$row->weight = (int) $row->weight;
       $states[] = $row;
     }
 
@@ -126,6 +115,46 @@ class workflow {
     return $states;
   }
   static $states_cache = array();   
+
+  /**
+  * Query database for the transitions associated with a list of states
+  * (there's no direct association of transitions and a workflow in the module's data model) 
+  *
+  * @param $states
+  *   array of state objects or state names
+  *
+  * @return
+  *   The array of transitions, where each transition had one of the given states in the start or destination.
+  */  
+  static function query_transitions($states) {
+    
+    if (!is_array($states) || sizeof($states) < 1 ) {
+      return array();
+    }
+    
+    $state_names = array();
+    if (is_array($states)) {
+      foreach ($states as $state) {
+        if (is_object($state)) {
+          $state_names[] = $state->name;
+        }
+        else {
+          $state_names[] = $state;
+        }
+      }
+    }
+    $state_names_list = db_placeholders($state_names, 'varchar');
+    $result = db_query("SELECT * FROM {workflow_transitions}
+              WHERE state_name IN (" . $state_names_list . ")
+              OR target_state_name IN (" . $state_names_list . ")", $state_names, $state_names);
+    
+    $transitions = array();
+    while ($transition = db_fetch_typed_object($result, "workflow_transition")) {
+      $transition->roles = workflow::tab_roles_to_array($transition->roles);
+      $transitions[] = $transition;
+    }
+    return $transitions;
+  }
   
   /**
   * Query database for the node types associated with the current workflow 
@@ -160,13 +189,67 @@ class workflow {
   
 }
 
+function workflow_init() {
+  
+  $schema = ctools_export_get_schema('workflows');
+  $export = $schema['export'];
+  
+}
+
+/************* Worfklow API Hook Implementations *******************/
+
+function workflow_export_crud_load($name) {
+  
+  dpm("CALLED LOAD");
+ 
+  ctools_include('export');
+  $table = "workflows";
+  $schema = ctools_export_get_schema($table);
+  $export = $schema['export'];
+
+  $workflows = ctools_export_load_object($table, 'names', array($name));
+  if (isset($workflows[$name])) {
+    $workflow = $workflows[$name];
+    //-- If object is served from the database (Normal or Overriden)
+    //-- then we need to load data from all the joined tables.
+    if ($workflow->export_type & EXPORT_IN_DATABASE) {
+      $workflow->states = workflow::query_states($workflow->name);  
+      $workflow->transitions = workflow::query_transitions($workflow->states);  
+      $workflow->node_types = workflow::query_nodetypes($workflow->name);  
+      $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);        
+    }
+    dpm($workflow);
+    return $workflow;
+  }
+}
+
+function workflow_export_crud_delete($object) {
+  
+  ctools_include('export');
+  $table = 'workflows';
+  
+  $schema = ctools_export_get_schema($table);
+  $export = $schema['export'];
+  $workflow_name = is_object($object) ? $object->{$export['key']} : $object;
+  db_query("DELETE FROM {workflows} WHERE " . $export['key'] . " = '%s'", $workflow_name);
+  db_query("DELETE FROM {workflow_type_map} WHERE `workflow_name` = '%s'", $workflow_name);  
+  db_query("DELETE FROM {workflow_states} WHERE `workflow_name` = '%s'", $workflow_name);    
+  
+  // @TODO suppor workflow transitions.
+
+}
+
 function workflow_export_callback($workflow, $prefix = '') {
 
-  $workflow->states = workflow::query_states($workflow->name);    
-  $workflow->node_types = workflow::query_nodetypes($workflow->name);  
-    
-    
+  dpm("CALLED EXPORT");
+  dpm($workflow);
+      
   ctools_include('export');
+  if ($workflow->export_type == EXPORT_IN_DATABASE) {
+    dpm("going to call load now");
+    $workflow = workflow_export_crud_load($workflow->name);
+  }
+  
   $output = ctools_export_object('workflows', $workflow, $prefix);
   
   $output .= "$prefix" . '$workflow->states = array();' . "\n";  
@@ -180,10 +263,21 @@ function workflow_export_callback($workflow, $prefix = '') {
     }
     $output .= "\n";
   }
+
+  $output .= "$prefix" . '$workflow->transitions = array();' . "\n";  
+  if (is_array($workflow->transitions)) {
+    $counter = 0;
+    foreach ($workflow->transitions as $transition) {
+      $output .= "\n";
+      $output .= ctools_export_object('workflow_transitions', $transition, $prefix);
+      $output .= "$prefix" . '$workflow->transitions[' . $counter . '] = $workflow_transition' . ";\n";
+      $counter++;      
+    }
+    $output .= "\n";
+  }
+
   
-  $roles = workflow::tab_roles_to_array($workflow->tab_roles);  
-  
-  $output .= "$prefix" . '$workflow->roles = ' . ctools_var_export($roles, $prefix) . ";\n";
+  $output .= "$prefix" . '$workflow->roles = ' . ctools_var_export($workflow->roles, $prefix) . ";\n";
   $output .= "$prefix" . '$workflow->node_types = ' . ctools_var_export($workflow->node_types, $prefix) . ";\n";  
   
   return $output;
@@ -198,26 +292,6 @@ function workflow_state_weight_exporter($workflow, $field, $value, $indent) {
     return (int) $workflow->weight;
   }
 }
-
-
-/*
-  Kind of code we need to generate:
-  
-  $workflow = new workflow;
-  $workflow->disabled = FALSE; 
-  $workflow->api_version = 1;
-  $workflow->wid = '1';
-  $workflow->name = 'op_basic_publishing_workflow';
-  $workflow->label = 'Basic Publishing Workflow';
-  $workflow->tab_roles = '';
-  $workflow->options = array(
-    'comment_log_node' => 1,
-    'comment_log_tab' => 1,
-  );
-  
-*/
-
-
 
 
 /**
