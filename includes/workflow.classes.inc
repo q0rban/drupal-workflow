@@ -144,9 +144,11 @@ class workflow {
       }
     }
     $state_names_list = db_placeholders($state_names, 'varchar');
+    //-- We need the list of states twice in the query.
+    $state_names = array_merge($state_names, $state_names);    
     $result = db_query("SELECT * FROM {workflow_transitions}
               WHERE state_name IN (" . $state_names_list . ")
-              OR target_state_name IN (" . $state_names_list . ")", $state_names, $state_names);
+              OR target_state_name IN (" . $state_names_list . ")", $state_names);
     
     $transitions = array();
     while ($transition = db_fetch_typed_object($result, "workflow_transition")) {
@@ -175,7 +177,7 @@ class workflow {
       return self::$node_types_cache[$workflow_name];
     }
     
-    $result = db_query("SELECT `type` FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);
+    $result = db_query("SELECT type FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);
     
     $types = array();
     while ($row = db_fetch_object($result)) {
@@ -199,9 +201,7 @@ function workflow_init() {
 /************* Worfklow API Hook Implementations *******************/
 
 function workflow_export_crud_load($name) {
-  
-  dpm("CALLED LOAD");
- 
+   
   ctools_include('export');
   $table = "workflows";
   $schema = ctools_export_get_schema($table);
@@ -218,7 +218,6 @@ function workflow_export_crud_load($name) {
       $workflow->node_types = workflow::query_nodetypes($workflow->name);  
       $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);        
     }
-    dpm($workflow);
     return $workflow;
   }
 }
@@ -231,22 +230,37 @@ function workflow_export_crud_delete($object) {
   $schema = ctools_export_get_schema($table);
   $export = $schema['export'];
   $workflow_name = is_object($object) ? $object->{$export['key']} : $object;
-  db_query("DELETE FROM {workflows} WHERE " . $export['key'] . " = '%s'", $workflow_name);
-  db_query("DELETE FROM {workflow_type_map} WHERE `workflow_name` = '%s'", $workflow_name);  
-  db_query("DELETE FROM {workflow_states} WHERE `workflow_name` = '%s'", $workflow_name);    
   
-  // @TODO suppor workflow transitions.
+  /** Delete Workflow Transitions **/
+  $result = db_query("SELECT name FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);
+    
+  $state_names = array();
+  while ($row = db_fetch_typed_object($result, 'workflow_state')) {
+    $state_names[] = $row->name;
+  }
+    
+  if (sizeof($state_names) > 0) {
+    $state_names_list = db_placeholders($state_names, 'varchar');
+    //-- We need the list of states twice in the query.
+    $state_names = array_merge($state_names, $state_names);
+
+    $result = db_query("DELETE FROM {workflow_transitions}
+              WHERE state_name IN (" . $state_names_list . ")
+              OR target_state_name IN (" . $state_names_list . ")", $state_names);    
+  }
+  /** End Delete Workflow Transitions **/
+  
+  db_query("DELETE FROM {workflows} WHERE " . $export['key'] . " = '%s'", $workflow_name);
+  db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);  
+  db_query("DELETE FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);    
+  
 
 }
 
 function workflow_export_callback($workflow, $prefix = '') {
-
-  dpm("CALLED EXPORT");
-  dpm($workflow);
       
   ctools_include('export');
-  if ($workflow->export_type == EXPORT_IN_DATABASE) {
-    dpm("going to call load now");
+  if ($workflow->export_type & EXPORT_IN_DATABASE) {
     $workflow = workflow_export_crud_load($workflow->name);
   }
   
@@ -298,6 +312,8 @@ function workflow_state_weight_exporter($workflow, $field, $value, $indent) {
  * While db_fetch_object in Drupal is just a delegator to DB-specific fetch_object() functions, the original ones can
  * load a resultset in a class-typed object. Unfortunately, Drupal always puts stuff on stdClass. This function bypasses
  * the limitation.
+ *
+ * @see: http://drupal.org/node/950270 for the status of trying to fix this in D6 core.
  *
  * @param $resultset
  *   DB resultset resource
