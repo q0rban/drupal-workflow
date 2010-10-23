@@ -67,6 +67,16 @@ function workflow_load_all($reset = FALSE) {
 
     // Load up any workflows from code and save them to the database.
     $default_workflows = module_invoke_all('workflow_default_workflows');
+    
+    // Load all CTools/Features exported code.
+    ctools_include('export');
+    $table = "workflows";
+    $schema = ctools_export_get_schema($table);
+    $export = $schema['export'];
+    $default_ctools_workflows =  _ctools_export_get_defaults($table, $export);
+    
+    $default_workflows += $default_ctools_workflows;
+    
     drupal_alter('workflow_default_workflows', $default_workflows);
 
     foreach ($default_workflows as $workflow) {
