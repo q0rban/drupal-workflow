@@ -49,6 +49,8 @@ class workflow {
   var $node_types;
   var $options;
   
+  var $disabled = FALSE;
+  
   function __construct($name = NULL) {
     
     // Pre-populate the object if name was passed to the constructor
@@ -218,6 +220,7 @@ function workflow_export_crud_load($name) {
       $workflow->node_types = workflow::query_nodetypes($workflow->name);  
       $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);        
     }
+    $workflow->export_type = EXPORT_IN_CODE;
     return $workflow;
   }
 }

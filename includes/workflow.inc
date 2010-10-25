@@ -52,7 +52,7 @@ function workflow_load_all($reset = FALSE) {
 
     // Load all workflows from the database.
     $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
-    while ($workflow = db_fetch_object($result)) {
+    while ($workflow = db_fetch_typed_object($result, 'workflow')) {
       // Sanitize the label.
       $workflow->label = check_plain(t($workflow->label));
       // Unserialize the options.
@@ -69,14 +69,10 @@ function workflow_load_all($reset = FALSE) {
     $default_workflows = module_invoke_all('workflow_default_workflows');
     
     // Load all CTools/Features exported code.
-    ctools_include('export');
-    $table = "workflows";
-    $schema = ctools_export_get_schema($table);
-    $export = $schema['export'];
-    $default_ctools_workflows =  _ctools_export_get_defaults($table, $export);
+    $default_ctools_workflows =  workflow_load_default_workflows();
     
     $default_workflows += $default_ctools_workflows;
-    
+
     drupal_alter('workflow_default_workflows', $default_workflows);
 
     foreach ($default_workflows as $workflow) {
@@ -86,16 +82,43 @@ function workflow_load_all($reset = FALSE) {
       }
       else {
         // Sets export_type to 0011 (In database and code, aka OVERRIDDEN).
-        $workflow->export_type |= WORKFLOW_IN_CODE;
+        $workflow->export_type |= WORKFLOW_IN_DATABASE;
+        $workflows[$workflow->name] = $workflow;        
       }
     }
 
     drupal_alter('workflows', $workflows);
 
-    cache_set('workflows', $workflows);
+    //cache_set('workflows', $workflows);
   }
 
   return $workflows;
+}
+
+function workflow_load_default_workflows() {
+
+  /**
+  * avoid making a hard dependency of Workflow module on CTools
+  */
+  if (!function_exists('_ctools_export_get_defaults')) {
+    return array();
+  }
+
+  // Load all CTools/Features exported code.
+  ctools_include('export');
+  $table = "workflows";
+  $schema = ctools_export_get_schema($table);
+  $export = $schema['export'];
+  $default_ctools_workflows =  _ctools_export_get_defaults($table, $export);
+  
+  //-- set proper export_type
+  if (is_array($default_ctools_workflows)) {
+    foreach ($default_ctools_workflows as &$workflow) {
+      $workflow->export_type = EXPORT_IN_CODE;
+    }
+  }
+  
+  return $default_ctools_workflows;
 }
 
 /**
@@ -190,10 +213,12 @@ function workflow_get_label($name) {
  *   The saved workflow object.
  */
 function workflow_save($workflow) {
-  $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
-  $workflow += $default;
-
-  $workflow = (object) $workflow;
+  $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
+  $workflow->options += $default_options;
+  
+  if (!is_object($workflow)) {
+    $workflow = (object) $workflow;
+  }
 
   if (drupal_write_record('workflows', $workflow)) {
     if (empty($workflow->states)) {
