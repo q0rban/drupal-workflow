@@ -112,6 +112,14 @@ function workflow_menu() {
     'page arguments' => array('workflow_delete_form'),
     'file' => 'workflow.admin.inc',
   );
+  $items['admin/build/workflow/revert'] = array(
+    'title' => 'Revert workflow',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer workflow'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('workflow_revert_form'),
+    'file' => 'workflow.admin.inc',
+  );  
   $items['node/%node/workflow'] = array(
     'title' => 'Workflow',
     'type' => MENU_LOCAL_TASK,

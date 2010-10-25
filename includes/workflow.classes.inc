@@ -225,6 +225,9 @@ function workflow_export_crud_load($name) {
   }
 }
 
+/**
+* Delete workflow object. You can pass the workflow's machine name instead of a full object.
+*/
 function workflow_export_crud_delete($object) {
   
   ctools_include('export');

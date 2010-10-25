@@ -213,7 +213,6 @@ function workflow_deletewf($name) {
   $result = db_query("SELECT * FROM {workflow_states} WHERE workflow_name = '%s'", $name);
   while ($state = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
-    dpm ("Deleting: " . $state->name);
     workflow_state_delete($state->name);
   }
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $name);

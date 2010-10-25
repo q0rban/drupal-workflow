@@ -124,6 +124,47 @@ function workflow_delete_form_submit($form, &$form_state) {
 }
 
 /**
+ * Form for confirmation of workflow revert.
+ *
+ * @param $name
+ *   The machine name of the workflow to revert.
+ * @return
+ *   Confirmation form array.
+ */
+function workflow_revert_form(&$form_state, $name) {
+  $form['name'] = array(
+    '#type' => 'value',
+    '#value' => $name,
+  );
+  return confirm_form(
+    $form,
+    t('Are you sure you want to revert %title? Configuration will switch to the one provided by code.', array('%title' => workflow_get_label($name))),
+    !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
+    t('This action cannot be undone.'),
+    t('Revert'),
+    t('Cancel')
+  );
+}
+
+
+/**
+ * Submit handler for workflow revert form.
+ *
+ * @see workflow_revert_form()
+ */
+function workflow_revert_form_submit($form, &$form_state) {
+  if ($form_state['values']['confirm'] == 1) {
+    $name = $form_state['values']['name'];
+    $label = workflow_get_label($name);
+    workflow_export_crud_delete($name);
+    watchdog('workflow', 'Reverted workflow %label with all its states', array('%label' => $label));
+    drupal_set_message(t('The workflow %label with all its states was reverted.', array('%label' => $label)));
+    $form_state['redirect'] = 'admin/build/workflow';
+  }
+}
+
+
+/**
  * View workflow permissions by role
  *
  * @param $workflow
@@ -461,9 +502,13 @@ function workflow_overview() {
         'href' => "admin/build/workflow/edit/$workflow_name"),
       'workflow_overview_delete' => array(
         'title' => t('Delete'),
-        // You can not delete a default workflow
+         // You can not delete a default workflow
         'title_default' => '',         
-        'href' => "admin/build/workflow/delete/$workflow_name"),
+        'title_overridden' => t('Revert'),
+        'href' => "admin/build/workflow/delete/$workflow_name",
+         // You can not delete a default workflow
+        'href_default' => "admin/build/workflow/edit/$workflow_name",
+        'href_overridden' => "admin/build/workflow/revert/$workflow_name"),
     );
 
     // Allow modules to insert their own workflow operations.
@@ -511,19 +556,30 @@ function workflow_export_type_to_state($type) {
 }
 
 /**
-* Pick appropriate link title, depending on the state of the workflow (Normal, Default or Overridden).
+* Pick appropriate link title and link href, depending on the state of the workflow (Normal, Default or Overridden).
 */
 function workflow_overview_parse_links($links, $workflow) {
 
-  if (($workflow->export_type & EXPORT_IN_DATABASE)) {
-    return $links;
+ $suffix = "";
+ $type = $workflow->export_type;
+ if (($type & EXPORT_IN_DATABASE) && ($type & EXPORT_IN_CODE)) {
+    $suffix = "overridden";
   }
-      
+  else if ($type & EXPORT_IN_DATABASE) {
+    $suffix = "normal";  
+  }
+  else if ($type & EXPORT_IN_CODE) {
+    $suffix = "default";
+  }
+
   if (is_array($links)) {
     foreach ($links as &$link) {
-      if (isset($link["title_default"])) {
-        $link["title"] = $link["title_default"];
+      if (isset($link["title_" . $suffix])) {
+        $link["title"] = $link["title_" . $suffix];
       }
+      if (isset($link["href_" . $suffix])) {
+        $link["href"] = $link["href_" . $suffix];
+      }      
     }
   }
 
@@ -545,7 +601,9 @@ function workflow_states($workflow) {
  */
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
-
+  
+  //dpm($workflow);
+  
   $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;
 
