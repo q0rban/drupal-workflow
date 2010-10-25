@@ -39,87 +39,15 @@ function workflow_load($name) {
  *   An array of workflows.
  */
 function workflow_load_all($reset = FALSE) {
-  static $workflows;
 
-  if (is_null($workflows) || $reset) {
-    // See if we have a populated cache first.
-    if (!$reset && $cache = cache_get('workflows')) {
-      $workflows = $cache->data;
-      return $workflows;
-    }
-
-    $workflows = array();
-
-    // Load all workflows from the database.
-    $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
-    while ($workflow = db_fetch_typed_object($result, 'workflow')) {
-      // Sanitize the label.
-      $workflow->label = check_plain(t($workflow->label));
-      // Unserialize the options.
-      $workflow->options = unserialize($workflow->options);
-
-      // Load up the states.
-      $workflow->states = workflow_get_db_states($workflow->name);
-
-      $workflow->export_type = WORKFLOW_IN_DATABASE; // 0001
-      $workflows[$workflow->name] = $workflow;
-    }
-
-    // Load up any workflows from code and save them to the database.
-    $default_workflows = module_invoke_all('workflow_default_workflows');
-    
-    // Load all CTools/Features exported code.
-    $default_ctools_workflows =  workflow_load_default_workflows();
-    
-    $default_workflows += $default_ctools_workflows;
-
-    drupal_alter('workflow_default_workflows', $default_workflows);
-
-    foreach ($default_workflows as $workflow) {
-      if (empty($workflows[$workflow->name])) {
-        $workflow->export_type = WORKFLOW_IN_CODE; // 0010
-        $workflows[$workflow->name] = $workflow;
-      }
-      else {
-        // Sets export_type to 0011 (In database and code, aka OVERRIDDEN).
-        $workflow->export_type |= WORKFLOW_IN_DATABASE;
-        $workflows[$workflow->name] = $workflow;        
-      }
-    }
-
-    drupal_alter('workflows', $workflows);
-
-    //cache_set('workflows', $workflows);
-  }
-
-  return $workflows;
-}
-
-function workflow_load_default_workflows() {
-
-  /**
-  * avoid making a hard dependency of Workflow module on CTools
-  */
-  if (!function_exists('_ctools_export_get_defaults')) {
-    return array();
-  }
-
-  // Load all CTools/Features exported code.
   ctools_include('export');
-  $table = "workflows";
-  $schema = ctools_export_get_schema($table);
-  $export = $schema['export'];
-  $default_ctools_workflows =  _ctools_export_get_defaults($table, $export);
+  $workflows = ctools_export_crud_load_all('workflows', $reset);
+  drupal_alter('workflows', $workflows);
   
-  //-- set proper export_type
-  if (is_array($default_ctools_workflows)) {
-    foreach ($default_ctools_workflows as &$workflow) {
-      $workflow->export_type = EXPORT_IN_CODE;
-    }
-  }
-  
-  return $default_ctools_workflows;
+  return $workflows;
+
 }
+
 
 /**
  * Get all workflow labels.
@@ -281,7 +209,7 @@ function workflow_update($workflow) {
  * @param $name
  *   The machine name of the workflow.
  */
-function workflow_delete($name) {
+function workflow_deletewf($name) {
   $result = db_query("SELECT * FROM {workflow_states} WHERE workflow_name = '%s'", $name);
   while ($state = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
