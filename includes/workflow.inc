@@ -76,7 +76,7 @@ function workflow_load_all($reset = FALSE) {
       }
       else {
         // Sets export_type to 0011 (In database and code, aka OVERRIDDEN).
-        $workflow->export_type |= WORKFLOW_IN_CODE;
+        $workflows[$workflow->name]->export_type |= WORKFLOW_IN_CODE;
       }
     }
 
