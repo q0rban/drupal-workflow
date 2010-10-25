@@ -213,12 +213,16 @@ function workflow_get_label($name) {
  *   The saved workflow object.
  */
 function workflow_save($workflow) {
-  $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
-  $workflow->options += $default_options;
   
   if (!is_object($workflow)) {
     $workflow = (object) $workflow;
   }
+
+  $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
+  if (!is_array($workflow->options)) {
+    $workflow->options = array();
+  }
+  $workflow->options += $default_options;
 
   if (drupal_write_record('workflows', $workflow)) {
     if (empty($workflow->states)) {
@@ -277,12 +281,12 @@ function workflow_update($workflow) {
  * @param $name
  *   The machine name of the workflow.
  */
-function workflow_deletewf($name) {
+function workflow_delete($name) {
   $result = db_query("SELECT * FROM {workflow_states} WHERE workflow_name = '%s'", $name);
   while ($state = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
+    dpm ("Deleting: " . $state->name);
     workflow_state_delete($state->name);
-    db_query("DELETE FROM {workflow_node} WHERE state_name = '%s'", $state->name);
   }
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $name);
   db_query("DELETE FROM {workflows} WHERE name = '%s'", $name);

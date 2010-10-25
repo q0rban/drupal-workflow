@@ -257,6 +257,9 @@ function workflow_export_crud_delete($object) {
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);  
   db_query("DELETE FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);    
   
+  // Workflow deletion may affect tabs (local tasks), so force menu rebuild.
+  cache_clear_all('*', 'cache_menu', TRUE);
+  menu_rebuild();
 
 }
 
