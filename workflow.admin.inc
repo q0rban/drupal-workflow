@@ -457,9 +457,12 @@ function workflow_overview() {
         'href' => "admin/build/trigger/workflow/$workflow_name"),
       'workflow_overview_edit' => array(
         'title' => t('Edit'),
+        'title_default' => t('Override'),
         'href' => "admin/build/workflow/edit/$workflow_name"),
       'workflow_overview_delete' => array(
         'title' => t('Delete'),
+        // You can not delete a default workflow
+        'title_default' => '',         
         'href' => "admin/build/workflow/delete/$workflow_name"),
     );
 
@@ -470,12 +473,14 @@ function workflow_overview() {
     if (!module_exists('trigger') || count($workflow->states) < 2) {
       unset($links['workflow_overview_actions']);
     }
-
-    $row[] = array($workflow->label, theme('links', $links));
+    
+    $row[] = array($workflow->label, 
+                   workflow_export_type_to_state($workflow->export_type),
+                   theme('links',  workflow_overview_parse_links($links, $workflow)));
   }
 
   if ($row) {
-    $output = theme('table', array(t('Workflow'), t('Operations')), $row);
+    $output = theme('table', array(t('Workflow'), t('State'), t('Operations')), $row);
     $output .= drupal_get_form('workflow_types_form');
   }
   else {
@@ -483,6 +488,46 @@ function workflow_overview() {
   }
 
   return $output;
+}
+
+/**
+* Converts export_type to human-readable state name (translated).
+*/
+function workflow_export_type_to_state($type) {
+
+  if (($type & EXPORT_IN_DATABASE) && ($type & EXPORT_IN_CODE)) {
+    return t('Overridden');
+  }
+  else if ($type & EXPORT_IN_DATABASE) {
+    return t('Normal');
+  }
+  else if ($type & EXPORT_IN_CODE) {
+    return t('Default');
+  }
+  else {
+    return t('Broken');  
+  }
+
+}
+
+/**
+* Pick appropriate link title, depending on the state of the workflow (Normal, Default or Overridden).
+*/
+function workflow_overview_parse_links($links, $workflow) {
+
+  if (($workflow->export_type & EXPORT_IN_DATABASE)) {
+    return $links;
+  }
+      
+  if (is_array($links)) {
+    foreach ($links as &$link) {
+      if (isset($link["title_default"])) {
+        $link["title"] = $link["title_default"];
+      }
+    }
+  }
+
+  return $links;
 }
 
 /**
