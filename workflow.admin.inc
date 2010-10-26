@@ -16,6 +16,7 @@ function workflow_add_form(&$form_state) {
     '#title' => t('Workflow Label'),
     '#required' => TRUE,
     '#maxlength' => '254',
+    '#width' => 120,
   );
   $form['name'] = array(
     '#type' => 'textfield',
@@ -305,13 +306,23 @@ function workflow_edit_form_validate($form, &$form_state) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_submit($form, &$form_state) {
+
+  $values = $form_state['values'];
   $workflow = $form['#workflow'];
-  if ($workflow->export_type === WORKFLOW_IN_CODE) {
-    workflow_save($workflow);
+  if (is_array($values)) {
+    foreach($values as $key => $val) {
+      if ($key == 'wid') continue;
+      if (isset($workflow->$key)) {
+        if ($key == "tab_roles") {
+          $worfklow->roles = $val;        
+          $val = implode(',', array_values($val));          
+        }
+        $workflow->$key = $val;
+      }
+    }
   }
-  else {
-    workflow_update($form_state['values']);
-  }
+  
+  workflow_save($workflow);
   drupal_set_message(t('The workflow was updated.'));
 }
 

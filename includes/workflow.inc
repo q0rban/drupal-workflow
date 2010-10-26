@@ -160,8 +160,15 @@ function workflow_save($workflow) {
     $workflow->options = array();
   }
   $workflow->options += $default_options;
+  
+  if (!empty($workflow->wid)) {
+    $ret = drupal_write_record('workflows', $workflow, "wid");
+  }
+  else {
+    $ret = drupal_write_record('workflows', $workflow);    
+  }
 
-  if (drupal_write_record('workflows', $workflow)) {
+  if ($ret) {
     if (empty($workflow->states)) {
       $state = new stdClass();
       $state->name = _workflow_creation_state($workflow->name);
