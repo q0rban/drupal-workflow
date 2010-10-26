@@ -27,6 +27,7 @@ define('WORKFLOW_IN_CODE', 0x02);
 function workflow_load($name) {
   $workflows = workflow_load_all();
   $workflow =  empty($workflows[$name]) ? FALSE : $workflows[$name];
+  //dpm($workflow);
   return $workflow;
 }
 
@@ -83,6 +84,14 @@ function workflow_load_all_labels() {
  */
 function workflow_invalidate_cache() {
   workflow_load_all(TRUE);
+}
+
+/**
+ * Removes workflow cache. For functions like workflow_state_save, calling this function
+ * is much faster than calling workflow_invalidate_cache.
+ */
+function workflow_clear_cache() {
+  cache_clear_all('workflows', 'cache', FALSE);
 }
 
 /**
@@ -190,6 +199,7 @@ function workflow_save($workflow) {
     }
 
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
+    cache_clear_all('*', 'cache_menu', TRUE); 
     menu_rebuild();
     workflow_invalidate_cache();
   }
@@ -210,6 +220,7 @@ function workflow_update($workflow) {
   $workflow->tab_roles = is_array($workflow->tab_roles) ? implode(',', $workflow->tab_roles) : $workflow->tab_roles;
   $workflow = drupal_write_record('workflows', $workflow, 'wid');
   // Workflow name change affects tabs (local tasks), so force menu rebuild.
+  cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
   workflow_invalidate_cache();
 
@@ -392,7 +403,7 @@ function workflow_state_save($state) {
     workflow_transitions_write($state->name, $state->transitions);
   }
 
-  workflow_invalidate_cache();
+  workflow_clear_cache();
 
   return $state;
 }

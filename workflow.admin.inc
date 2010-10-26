@@ -83,6 +83,7 @@ function workflow_add_form_submit($form, &$form_state) {
     watchdog('workflow', 'There was an error creating workflow %label', array('%label' => $values['label']), WATCHDOG_WARNING);
     drupal_set_message(t('There was a problem saving this workflow. Please contact your site administrator.'), 'warning');
   }
+  workflow_invalidate_cache();
 }
 
 /**
@@ -621,10 +622,11 @@ function workflow_states_form(&$form_state, $workflow) {
  *   Form array.
  */
 function _workflow_state_edit_form(&$form_state, $state) {
+  
   $form['#state'] = $state;
   $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $state->name,
+    '#value' => $state->workflow_name,
   );
   $form['sid'] = array(
     '#type' => 'value',
@@ -703,6 +705,7 @@ function _workflow_state_create_form(&$form_state, $workflow_name) {
     '#title' => t('Machine name'),
     '#size'  => '16',
     '#maxlength' => '254',
+    '#field_prefix' =>   $workflow_name . '_',
     '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
     '#element_validate' => array('workflow_state_validate_machine_name'),
   );
@@ -893,18 +896,27 @@ function workflow_states_form_validate($form, &$form_state) {
  * @see workflow_states_form()
  */
 function workflow_states_form_submit($form, &$form_state) {
-  foreach ($form_state['values']['states'] as $state_name => $state) {
-    // Ensure the state has all necessary fields and isn't a system state before
-    // saving.
-    if (!empty($state['name']) && !empty($state['label']) && !$state['system_state']) {
-      $state['name'] = strtolower($state['name']);
-      $state = workflow_state_save((object) $state);
-      if (empty($form_state['values']['states'][$state_name]['sid'])) {
-        watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
-        drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
+
+  $states = $form_state['values']['states'];
+
+  if (is_array($states)) {
+    foreach ($states as $state_name => $state) {
+      // Ensure the state has all necessary fields and isn't a system state before saving.
+      if (!empty($state['name']) && !empty($state['label']) && empty($state['system_state'])) {
+        $state['name'] = strtolower($state['name']);
+        //-- Prefix new state names with workflow-name to ensure they are unique-enough.
+        if(empty($state['sid'])) {
+          $state['name'] = $state['workflow_name'] . '_' . $state['name'];
+        }
+        $state = workflow_state_save((object) $state);
+        if (empty($states[$state_name]['sid'])) {
+          watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
+          drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
+        }
       }
     }
   }
+  workflow_clear_cache();
 }
 
 /**
