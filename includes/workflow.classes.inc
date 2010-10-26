@@ -12,7 +12,6 @@
 */
 class workflow_state {
   
-  var $sid;
   var $name;
   var $label;
   
@@ -27,7 +26,6 @@ class workflow_state {
 */
 class workflow_transition {
   
-  var $tid;
   var $state_name;
   var $target_state_name;  
   var $roles;
@@ -40,7 +38,6 @@ class workflow_transition {
 */
 class workflow {
   
-  var $wid;
   var $name;
   var $label;
   
@@ -219,8 +216,9 @@ function workflow_export_crud_load($name) {
       $workflow->transitions = workflow::query_transitions($workflow->states);  
       $workflow->node_types = workflow::query_nodetypes($workflow->name);  
       $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);        
+      //$workflow->type = t('Normal');
+      //$workflow->export_type = EXPORT_IN_DATABASE;      
     }
-    $workflow->export_type = EXPORT_IN_CODE;
     return $workflow;
   }
 }
@@ -263,9 +261,14 @@ function workflow_export_crud_delete($object) {
   // Workflow deletion may affect tabs (local tasks), so force menu rebuild.
   cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
+  workflow_invalidate_cache();
 
 }
 
+
+/**
+* export callback implementation for CTools Exportable workflows.
+*/
 function workflow_export_callback($workflow, $prefix = '') {
       
   ctools_include('export');
@@ -306,6 +309,53 @@ function workflow_export_callback($workflow, $prefix = '') {
   return $output;
   
 }
+
+
+/**
+* Load all callback implementation for an exportable worklow
+*/
+function workflow_load_all_callback($reset){
+
+  $table = "workflows";
+  $cache = &ctools_static(__FUNCTION__);
+  $cached_database = &ctools_static('ctools_export_load_object_all');
+
+  $schema = ctools_export_get_schema($table);
+  if (empty($schema)) {
+    return array();
+  }
+
+  $export = $schema['export'];
+
+  if (!isset($cache[$table])) {
+    $cache[$table] = array();
+  }
+
+  if (!empty($cached_database[$table]) && !$reset) {
+    return $cache[$table];
+  }
+
+  //-- Load all workflow objects, whether from the DB or code.
+  $workflows = ctools_export_load_object($table);
+  
+  if (is_array($workflows)) {
+    foreach ($workflows as $workflow) {
+      //-- If workflow is in database, add artifacts from the joined tables.
+      if ($workflow->export_type & EXPORT_IN_DATABASE) {
+        $workflow->states = workflow::query_states($workflow->name);  
+        $workflow->transitions = workflow::query_transitions($workflow->states);  
+        $workflow->node_types = workflow::query_nodetypes($workflow->name);  
+        $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);                
+      }
+      $cache[$table][$workflow->{$export['key']}] = $workflow; 
+    }
+  }
+
+  $cached_database[$table] = TRUE;
+  return $cache[$table];
+
+}
+
 
 /**
 * Tinyints are interpreted as booleans by CTools. To avoid that we need custom exporter (or we'd have to change field type).

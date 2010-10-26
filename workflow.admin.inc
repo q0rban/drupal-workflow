@@ -520,7 +520,7 @@ function workflow_overview() {
     }
     
     $row[] = array($workflow->label, 
-                   workflow_export_type_to_state($workflow->export_type),
+                   $workflow->type,
                    theme('links',  workflow_overview_parse_links($links, $workflow)));
   }
 
@@ -535,25 +535,6 @@ function workflow_overview() {
   return $output;
 }
 
-/**
-* Converts export_type to human-readable state name (translated).
-*/
-function workflow_export_type_to_state($type) {
-
-  if (($type & EXPORT_IN_DATABASE) && ($type & EXPORT_IN_CODE)) {
-    return t('Overridden');
-  }
-  else if ($type & EXPORT_IN_DATABASE) {
-    return t('Normal');
-  }
-  else if ($type & EXPORT_IN_CODE) {
-    return t('Default');
-  }
-  else {
-    return t('Broken');  
-  }
-
-}
 
 /**
 * Pick appropriate link title and link href, depending on the state of the workflow (Normal, Default or Overridden).
@@ -561,17 +542,8 @@ function workflow_export_type_to_state($type) {
 function workflow_overview_parse_links($links, $workflow) {
 
  $suffix = "";
- $type = $workflow->export_type;
- if (($type & EXPORT_IN_DATABASE) && ($type & EXPORT_IN_CODE)) {
-    $suffix = "overridden";
-  }
-  else if ($type & EXPORT_IN_DATABASE) {
-    $suffix = "normal";  
-  }
-  else if ($type & EXPORT_IN_CODE) {
-    $suffix = "default";
-  }
-
+ $suffix = strtolower($workflow->type);
+ 
   if (is_array($links)) {
     foreach ($links as &$link) {
       if (isset($link["title_" . $suffix])) {
@@ -582,7 +554,7 @@ function workflow_overview_parse_links($links, $workflow) {
       }      
     }
   }
-
+  
   return $links;
 }
 
@@ -601,8 +573,6 @@ function workflow_states($workflow) {
  */
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
-  
-  //dpm($workflow);
   
   $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;

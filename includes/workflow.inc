@@ -26,8 +26,8 @@ define('WORKFLOW_IN_CODE', 0x02);
  */
 function workflow_load($name) {
   $workflows = workflow_load_all();
-
-  return empty($workflows[$name]) ? FALSE : $workflows[$name];
+  $workflow =  empty($workflows[$name]) ? FALSE : $workflows[$name];
+  return $workflow;
 }
 
 /**
@@ -40,10 +40,19 @@ function workflow_load($name) {
  */
 function workflow_load_all($reset = FALSE) {
 
+  //-- CTools only provides static cache. We need to 
+  //-- implement additional cache because workflow_load_all
+  //-- can be a heavy operation.
+  if (!$reset && $cache = cache_get('workflows')) {
+    $workflows = $cache->data;
+    return $workflows;
+  }
+  
   ctools_include('export');
   $workflows = ctools_export_crud_load_all('workflows', $reset);
   drupal_alter('workflows', $workflows);
   
+  cache_set('workflows', $workflows);
   return $workflows;
 
 }
@@ -193,7 +202,6 @@ function workflow_update($workflow) {
   $workflow = (object) $workflow;
   $workflow->tab_roles = is_array($workflow->tab_roles) ? implode(',', $workflow->tab_roles) : $workflow->tab_roles;
   $workflow = drupal_write_record('workflows', $workflow, 'wid');
-
   // Workflow name change affects tabs (local tasks), so force menu rebuild.
   menu_rebuild();
   workflow_invalidate_cache();
@@ -222,6 +230,7 @@ function workflow_deletewf($name) {
   // Workflow deletion affects tabs (local tasks), so force menu rebuild.
   cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
+  workflow_invalidate_cache();
 }
 
 /**
@@ -366,7 +375,7 @@ function workflow_get_state_label($name) {
  */
 function workflow_state_save($state) {
   if (!isset($state->sid)) {
-    drupal_write_record('workflow_states', $state);
+    $ret = drupal_write_record('workflow_states', $state);
   }
   else {
     drupal_write_record('workflow_states', $state, 'sid');

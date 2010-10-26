@@ -31,7 +31,7 @@ function workflow_schema() {
       'key' => 'name',
       'key name' => 'Machine Name',
       'object' => 'workflow',
-      //'bulk export' => FALSE,
+      'load all callback' => 'workflow_load_all_callback',
       'export callback' => 'workflow_export_callback',
       'create callback' => 'workflow_export_crud_new',
       'load callback' => 'workflow_export_crud_load',
@@ -48,7 +48,7 @@ function workflow_schema() {
       )      
     ),
     'fields' => array(
-      'wid'          => array('type' => 'serial', 'not null' => TRUE),
+      'wid'          => array('type' => 'serial', 'not null' => TRUE, 'no export' => TRUE),
       'name'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'label'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'tab_roles'    => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
@@ -73,7 +73,7 @@ function workflow_schema() {
       'bulk export' => FALSE,
     ),  
     'fields' => array(
-      'tid'               => array('type' => 'serial', 'not null' => TRUE),
+      'tid'               => array('type' => 'serial', 'not null' => TRUE, 'no export' => TRUE),
       'state_name'        => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'target_state_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'roles'             => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
@@ -90,7 +90,7 @@ function workflow_schema() {
       'bulk export' => FALSE,
     ),
     'fields' => array(
-      'sid'           => array('type' => 'serial', 'not null' => TRUE),
+      'sid'           => array('type' => 'serial', 'not null' => TRUE, 'no export' => TRUE),
       'name'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'label'         => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
