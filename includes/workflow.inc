@@ -27,7 +27,6 @@ define('WORKFLOW_IN_CODE', 0x02);
 function workflow_load($name) {
   $workflows = workflow_load_all();
   $workflow =  empty($workflows[$name]) ? FALSE : $workflows[$name];
-  //dpm($workflow);
   return $workflow;
 }
 
@@ -95,6 +94,27 @@ function workflow_clear_cache() {
 }
 
 /**
+ * Write the transition roles for a workflow object. This function is in particular needed
+ * when saving in_code workflow to database (during "override").
+ *
+ * @param $workflow
+ *   Workflow object.
+ */
+function workflow_save_transitions($workflow) {
+  // Clean up existing transitions
+  workflow::remove_transitions($workflow->name);
+
+  if (is_array($workflow->transitions)) {
+    foreach ($workflow->transitions as $trn) {
+      $trn->roles = implode(',', $trn->roles);
+      $record = drupal_write_record('workflow_transitions', $trn);
+    }
+  }
+
+  workflow_clear_cache();
+}
+
+/**
  * Write the transition roles for a workflow state.
  *
  * @param $from_state
@@ -106,15 +126,17 @@ function workflow_transitions_write($from_state, $transitions) {
   // Clean up existing
   db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
-  foreach ($transitions as $to_state => $roles) {
-    //-- Do not save empty records.
-    if (!is_array($roles) || sizeof($roles) < 1 ) continue;
-    $transition = array();
-    $transition['state_name'] = $from_state;
-    $transition['target_state_name'] = $to_state;
-    $transition['roles'] = implode(',', $roles);
-
-    $record = drupal_write_record('workflow_transitions', $transition);
+  if (is_array($transitions)) {
+    foreach ($transitions as $to_state => $roles) {
+      //-- Do not save empty records.
+      if (!is_array($roles) || sizeof($roles) < 1 ) continue;
+      $transition = array();
+      $transition['state_name'] = $from_state;
+      $transition['target_state_name'] = $to_state;
+      $transition['roles'] = implode(',', $roles);
+  
+      $record = drupal_write_record('workflow_transitions', $transition);
+    }
   }
 
   // This function is called repeatedly during grid save, hence calling

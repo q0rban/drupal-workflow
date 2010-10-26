@@ -325,6 +325,10 @@ function workflow_edit_form_submit($form, &$form_state) {
     }
   }
   
+  // Saving object from code
+  if ($workflow->export_type == EXPORT_IN_CODE) {
+    workflow_save_transitions($workflow);
+  }
   workflow_save($workflow);
   drupal_set_message(t('The workflow was updated.'));
 }

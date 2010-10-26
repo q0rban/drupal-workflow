@@ -192,6 +192,34 @@ class workflow {
   }
   static $node_types_cache = array();
   
+  /**
+  * Remove role transitions for a specific workflow.
+  *
+  * @param $workflow_name
+  *   The machine name of the workflow
+  *
+  */  
+  static function remove_transitions($workflow_name) {
+
+    $result = db_query("SELECT name FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);
+      
+    $state_names = array();
+    while ($row = db_fetch_typed_object($result, 'workflow_state')) {
+      $state_names[] = $row->name;
+    }
+      
+    if (sizeof($state_names) > 0) {
+      $state_names_list = db_placeholders($state_names, 'varchar');
+      //-- We need the list of states twice in the query.
+      $state_names = array_merge($state_names, $state_names);
+  
+      $result = db_query("DELETE FROM {workflow_transitions}
+                WHERE state_name IN (" . $state_names_list . ")
+                OR target_state_name IN (" . $state_names_list . ")", $state_names);    
+    }
+
+  }
+  
 }
 
 function workflow_init() {
@@ -239,24 +267,7 @@ function workflow_export_crud_delete($object) {
   $export = $schema['export'];
   $workflow_name = is_object($object) ? $object->{$export['key']} : $object;
   
-  /** Delete Workflow Transitions **/
-  $result = db_query("SELECT name FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);
-    
-  $state_names = array();
-  while ($row = db_fetch_typed_object($result, 'workflow_state')) {
-    $state_names[] = $row->name;
-  }
-    
-  if (sizeof($state_names) > 0) {
-    $state_names_list = db_placeholders($state_names, 'varchar');
-    //-- We need the list of states twice in the query.
-    $state_names = array_merge($state_names, $state_names);
-
-    $result = db_query("DELETE FROM {workflow_transitions}
-              WHERE state_name IN (" . $state_names_list . ")
-              OR target_state_name IN (" . $state_names_list . ")", $state_names);    
-  }
-  /** End Delete Workflow Transitions **/
+  workflow::remove_transitions($workflow_name);
   
   db_query("DELETE FROM {workflows} WHERE " . $export['key'] . " = '%s'", $workflow_name);
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);  
@@ -284,12 +295,12 @@ function workflow_export_callback($workflow, $prefix = '') {
   
   $output .= "$prefix" . '$workflow->states = array();' . "\n";  
   if (is_array($workflow->states)) {
-    $counter = 0;
+    //$counter = 0;
     foreach ($workflow->states as $state) {
       $output .= "\n";
       $output .= ctools_export_object('workflow_states', $state, $prefix);
-      $output .= "$prefix" . '$workflow->states[' . $counter . '] = $workflow_state' . ";\n";
-      $counter++;      
+      $output .= "$prefix" . '$workflow->states[' . $state->name . '] = $workflow_state' . ";\n";
+      //$counter++;      
     }
     $output .= "\n";
   }
