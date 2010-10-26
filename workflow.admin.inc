@@ -174,23 +174,21 @@ function workflow_revert_form_submit($form, &$form_state) {
  */
 function workflow_permissions($workflow) {
   $map = array();
-  $roles = array('author' => t('author')) + user_roles();
+  $roles = workflow_get_roles();
+  $transitions = $workflow->transitions;
+  $states = $workflow->states;
 
-  if (is_array($workflow->states)) {
-    foreach ($workflow->states as $state) {
-      if (is_array($state->transitions)) {
-        foreach ($state->transitions as $to_state => $allowed_roles) {
-          foreach ($allowed_roles as $role) {
-            $map[$role]['transitions'][] = array($workflow->states[$state->name]->label, WORKFLOW_ARROW, $workflow->states[$to_state]->label);
-          }
+  if (is_array($transitions)) {
+    foreach ($transitions as $trn) {
+      if (is_array($trn->roles)) {
+        foreach ($trn->roles as $role) {
+          $from = isset($states[$trn->state_name]) ? $states[$trn->state_name]->label : "";
+          $to = isset($states[$trn->target_state_name]) ? $states[$trn->target_state_name]->label : "";
+          $map[$role]['transitions'][] = array($from, WORKFLOW_ARROW, $to);
+          $map[$role]['name'] = ucwords($roles[$role]);
         }
       }
     }
-  }
-
-  // Set up the labels.
-  foreach (array_keys($map) as $role) {
-    $map[$role]['name'] = $roles[$role];
   }
 
   return theme('workflow_permissions', $map);
@@ -341,6 +339,8 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
   $form = array();
   $form['#workflow'] = $workflow;
 
+  $transitions_matrix = workflow_transitions_to_matrix($workflow->transitions);
+
   $form['transitions'] = array(
     '#type' => 'fieldset',
     '#title' => t('Transitions'),
@@ -348,7 +348,7 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
     '#tree' => TRUE,
   );
 
-  $roles = workflow_get_roles();
+  $roles = workflow_get_roles(); 
   $states = $workflow->states;
   if (empty($states)) {
     $form = array(
@@ -357,23 +357,26 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
     );
     return $form;
   }
-  foreach ($states as $state_name => $state) {
-    foreach ($states as $nested_state_name => $nested_state) {
+
+  foreach ($states as $state) {
+    foreach ($states as $nested_state) {
       if (workflow_is_system_state($nested_state->label)) {
         // Don't allow transition TO (creation).
         continue;
       }
-      if ($nested_state_name != $state_name) {
+      if ($nested_state->name != $state->name) {
         // Need to generate checkboxes for transition from $state to $nested_state.
-        $from = $state_name;
-        $to = $nested_state_name;
+        $from = $state;
+        $to = $nested_state;
         foreach ($roles as $rid => $role_name) {
-          $transitions = $workflow->states[$from]->transitions;
-          $transition_roles = isset($transitions[$to]) ? $transitions[$to] : array();
-          $form['transitions'][$from][$to][$rid] = array(
+          $default_value = 0;
+          if (isset($transitions_matrix[$from->name][$to->name])) {
+            $default_value = in_array($rid, $transitions_matrix[$from->name][$to->name]);
+          }
+          $form['transitions'][$from->name][$to->name][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
-            '#default_value' => in_array($rid, $transition_roles),
+            '#default_value' => $default_value,
           );
         }
       }
@@ -398,6 +401,21 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
 }
 
 /**
+* Convert an array of transition objects to a 2-dimensional array, more appropriate for quick lookups.
+*/
+function workflow_transitions_to_matrix($transitions) {
+  $matrix = array();
+  if (is_array($transitions)) {
+    foreach ($transitions as $trn) {
+      $matrix[$trn->state_name][$trn->target_state_name] = $trn->roles;      
+    }
+  }
+  
+  return $matrix;
+  
+}
+
+/**
  * Validation handler for the transition_grid_form.
  *
  * @see workflow_transition_grid_form().
@@ -406,6 +424,7 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
   $workflow = $form['#workflow'];
   // Make sure 'author' is checked for (creation) -> [something].
   $creation_state = _workflow_creation_state($workflow->name);
+
   if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
     foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
       if ($roles['author']) {
@@ -427,15 +446,17 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
  * @see workflow_transition_grid_form().
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
+  
   $values = $form_state['values']['transitions'];
   foreach ($values as $from_state => $transitions) {
     // Convert the roles array to the expected format.
     foreach ($transitions as $to_state => $roles) {
       $transitions[$to_state] = array_keys(array_filter($roles));
     }
+    
     workflow_transitions_write($from_state, $transitions);
   }
-
+  
   $workflow = $form['#workflow'];
 
   if ($workflow->export_type === WORKFLOW_IN_CODE) {
@@ -460,24 +481,24 @@ function theme_workflow_transition_grid_form($form) {
     $roles = workflow_get_roles();
     $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
     $rows = array();
-    foreach ($states as $state_name => $state) {
+    foreach ($states as $state) {
       // Don't allow transition TO (creation).
       if (!workflow_is_system_state($state->label)) {
         $header[] = array('data' => $state->label);
       }
       $row = array(array('data' => $state->label));
-      foreach ($states as $nested_state_name => $nested_state) {
+      foreach ($states as $nested_state) {
         if (workflow_is_system_state($nested_state->label)) {
           // Don't allow transition TO (creation).
           continue;
         }
-        if ($nested_state_name != $state_name) {
+        if ($nested_state->name != $state->name) {
           // Need to render checkboxes for transition from $state to $nested_state.
-          $from = $state_name;
-          $to = $nested_state_name;
+          $from = $state;
+          $to = $nested_state;
           $cell = '';
           foreach ($roles as $rid => $role_name) {
-            $cell .= drupal_render($form['transitions'][$from][$to][$rid]);
+            $cell .= drupal_render($form['transitions'][$from->name][$to->name][$rid]);
           }
           $row[] = array('data' => $cell);
         }

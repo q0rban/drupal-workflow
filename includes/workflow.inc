@@ -107,6 +107,8 @@ function workflow_transitions_write($from_state, $transitions) {
   db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
   foreach ($transitions as $to_state => $roles) {
+    //-- Do not save empty records.
+    if (!is_array($roles) || sizeof($roles) < 1 ) continue;
     $transition = array();
     $transition['state_name'] = $from_state;
     $transition['target_state_name'] = $to_state;
@@ -115,8 +117,9 @@ function workflow_transitions_write($from_state, $transitions) {
     $record = drupal_write_record('workflow_transitions', $transition);
   }
 
-  // Invalidate the workflow cache.
-  workflow_invalidate_cache();
+  // This function is called repeatedly during grid save, hence calling
+  // workflow_invalidate_cache and reloading workflow every time would make it too slow.
+  workflow_clear_cache();
 
   return $record;
 }

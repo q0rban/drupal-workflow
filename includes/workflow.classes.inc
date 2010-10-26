@@ -110,7 +110,7 @@ class workflow {
     
     $states = array();
     while ($row = db_fetch_typed_object($result, 'workflow_state')) {
-      $states[] = $row;
+      $states[$row->name] = $row;
     }
 
     self::$states_cache[$workflow_name] = $states;    
