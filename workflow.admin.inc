@@ -176,10 +176,14 @@ function workflow_permissions($workflow) {
   $map = array();
   $roles = array('author' => t('author')) + user_roles();
 
-  foreach ($workflow->states as $state) {
-    foreach ($state->transitions as $to_state => $allowed_roles) {
-      foreach ($allowed_roles as $role) {
-        $map[$role]['transitions'][] = array($workflow->states[$state->name]->label, WORKFLOW_ARROW, $workflow->states[$to_state]->label);
+  if (is_array($workflow->states)) {
+    foreach ($workflow->states as $state) {
+      if (is_array($state->transitions)) {
+        foreach ($state->transitions as $to_state => $allowed_roles) {
+          foreach ($allowed_roles as $role) {
+            $map[$role]['transitions'][] = array($workflow->states[$state->name]->label, WORKFLOW_ARROW, $workflow->states[$to_state]->label);
+          }
+        }
       }
     }
   }
@@ -837,7 +841,6 @@ function workflow_state_validate_label($element, &$form_state) {
  * @see workflow_states_form()
  */
 function workflow_state_validate_machine_name($element, &$form_state) {
-  $workflow_name = $form_state['values']['workflow_name'];
   $machine_name = strtolower($element['#value']);
 
   // Make sure machine name contains only alnum chars and underscores.
@@ -845,9 +848,16 @@ function workflow_state_validate_machine_name($element, &$form_state) {
     form_error($element, t("The machine name must consist of alphanumeric or underscore characters only."));
   }
 
+  $states = $form_state['values']['states'];
+  //-- If there are no other states, checking for duplicate is not needed
+  if (!is_array($states) || sizeof($states)<1) return;
+  
+  $workflow_name = $states[0]['workflow_name'];
+  
   // Ensure that this machine name is unique.
-  if (workflow_state_machine_name_exists($machine_name)) {
-    form_error($element, t('A state with the machine name %name already exists.', array('%name' => $machine_name)));
+  if (workflow_state_machine_name_exists($workflow_name . '_' . $machine_name)) {
+    form_error($element, t('A state with the machine name: %name in the workflow: %workflow already exists.', 
+      array('%name' => $machine_name, '%workflow' => $workflow_name)));
   }
 }
 
