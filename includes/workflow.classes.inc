@@ -102,7 +102,11 @@ class workflow {
     }
 
     
-    $result = db_query("SELECT * FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);
+    $result = db_query("SELECT * 
+                        FROM {workflow_states} 
+                        WHERE workflow_name = '%s'
+                        ORDER BY weight
+                        ", $workflow_name);
     
     $states = array();
     while ($row = db_fetch_typed_object($result, 'workflow_state')) {

@@ -733,6 +733,10 @@ function theme_workflow_states_form($form) {
   foreach (element_children($form['states']) as $state_name) {
     $state_form = &$form['states'][$state_name];
     $cols = array();
+    
+    // This is needed to prevent admin theme breaking tabledrag on forms due to its
+    // special handling of description field.
+    $cols[] = array('data' => '', 'style' => 'width:30px');
 
     // Render the hidden 'sid' field and the title of the record into the same 
     // column of the row, keeping in mind that 'sid' may be empty.
@@ -766,15 +770,16 @@ function theme_workflow_states_form($form) {
   // on the form itself after we're done, so hidden security fields and other
   // elements (like buttons) will appear properly at the bottom of the form.
   $id = $form['#id'] .'-table';
-  $header = array(t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
+  $header = array('', t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
   $form['states']['#children'] .= theme('table', $header, $rows, array('id' => $id));
+  
   $form['states']['#children'] .= drupal_render($form['buttons']['submit']);
   $output = drupal_render($form);
 
   // Now that we've built our output, tell Drupal to add the tabledrag.js library.
   // We'll pass in the ID of the table, the behavior we want it to use, and the
   // class that appears on each 'weight' form element it should be controlling.
-  drupal_add_tabledrag($id, 'order', 'self', 'workflow-state-weight');
+  drupal_add_tabledrag($id, 'order', 'sibling', 'workflow-state-weight');
 
   return $output;
 }
