@@ -797,7 +797,7 @@ function workflow_get_roles() {
   static $roles = NULL;
   if (!$roles) {
     $result = db_query('SELECT * FROM {role} ORDER BY name');
-    $roles = array();
+    $roles = array('author' => t('Node Author (workflow)'));    
     while ($data = db_fetch_object($result)) {
       $roles[$data->rid] = check_plain($data->name);
     }
