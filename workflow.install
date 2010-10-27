@@ -58,11 +58,24 @@ function workflow_schema() {
     'indexes' => array('op_workflows_name' => array('name')),        
   );
   $schema['workflow_type_map'] = array(
+    'export' => array(
+      'key' => 'node_type',
+      'object' => 'workflow_type_map',
+      'can disable' => FALSE,
+      'identifier' => 'workflow_type_map',
+      'api' => array(
+        'owner' => 'workflow',
+        'api' => 'workflow',
+        'minimum_version' => 1,
+        'current_version' => 1,
+      )      
+    ),  
     'fields' => array(
-      'type'          => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'node_type'     => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
       'workflow_name' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => '')),
+    'primary key'    => array('node_type'),      
     'indexes' => array(
-      'type'          => array('type'),
+      'node_type'          => array('node_type'),
       'workflow_name' => array('workflow_name')),
   );
   $schema['workflow_transitions'] = array(

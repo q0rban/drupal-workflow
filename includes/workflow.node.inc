@@ -32,6 +32,8 @@ function node_workflows_alter(&$workflows) {
  */
 function workflow_node_type_map_load($orientation = 'node_type') {
   static $map;
+  
+  $workflows = workflow_load_all();
 
   if (empty($map)) {
     foreach (workflow_load_all() as $workflow) {
@@ -100,8 +102,11 @@ function workflow_get_workflow_for_type($type) {
  * @param $form_state['values']
  */
 function workflow_node_type_save($workflow_name, $node_type) {
-  db_query("DELETE FROM {workflow_type_map} WHERE type = '%s'", $node_type);
-  db_query("INSERT INTO {workflow_type_map} (type, workflow_name) VALUES ('%s', '%s')", $node_type, $workflow_name);
+  db_query("DELETE FROM {workflow_type_map} WHERE node_type = '%s'", $node_type);
+  $type_map = new stdClass();
+  $type_map->node_type = $node_type;
+  $type_map->workflow_name = $workflow_name;
+  return drupal_write_record('workflow_type_map', $type_map);
 }
 
 

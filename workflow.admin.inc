@@ -1060,7 +1060,9 @@ function workflow_types_form() {
   }
 
   $options = array('<'. t('None') .'>') + $workflows;
-
+  
+  $opa =  workflow_type_map_load_all();
+  
   $type_map = workflow_node_type_map_load();
 
   $form['#theme'] = 'workflow_types_form';
@@ -1120,6 +1122,7 @@ function theme_workflow_types_form($form) {
  * @see workflow_types_form()
  */
 function workflow_types_form_submit($form, &$form_state) {
+  
   $node_types = $form['#node_types'];
 
   foreach ($node_types as $type => $name) {

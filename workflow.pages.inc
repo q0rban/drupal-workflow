@@ -12,6 +12,7 @@
 function workflow_tab_page($node = NULL) {
   drupal_set_title(check_plain($node->title));
   $workflow = workflow_get_workflow_for_type($node->type);
+
   $states_per_page = variable_get('workflow_states_per_page', 20);
 
   $states = $workflow->states;

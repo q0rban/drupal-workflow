@@ -174,19 +174,13 @@ class workflow {
     if (empty($workflow_name)) {
       return array();
     }
-
-    //static $node_types;    
+    
     if (!empty(self::$node_types_cache[$workflow_name])) {
       return self::$node_types_cache[$workflow_name];
     }
-    
-    $result = db_query("SELECT type FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);
-    
-    $types = array();
-    while ($row = db_fetch_object($result)) {
-      $types[] = $row->type;
-    }
-    
+
+    $types = workflow_type_map_load_all($workflow_name);
+
     self::$node_types_cache[$workflow_name] = $types;
     return $types;
   }
@@ -222,12 +216,6 @@ class workflow {
   
 }
 
-function workflow_init() {
-  
-  $schema = ctools_export_get_schema('workflows');
-  $export = $schema['export'];
-  
-}
 
 /************* Worfklow API Hook Implementations *******************/
 
@@ -295,12 +283,10 @@ function workflow_export_callback($workflow, $prefix = '') {
   
   $output .= "$prefix" . '$workflow->states = array();' . "\n";  
   if (is_array($workflow->states)) {
-    //$counter = 0;
     foreach ($workflow->states as $state) {
       $output .= "\n";
       $output .= ctools_export_object('workflow_states', $state, $prefix);
-      $output .= "$prefix" . '$workflow->states[' . $state->name . '] = $workflow_state' . ";\n";
-      //$counter++;      
+      $output .= "$prefix" . '$workflow->states[\'' . $state->name . '\'] = $workflow_state' . ";\n";
     }
     $output .= "\n";
   }
@@ -319,7 +305,9 @@ function workflow_export_callback($workflow, $prefix = '') {
 
   
   $output .= "$prefix" . '$workflow->roles = ' . ctools_var_export($workflow->roles, $prefix) . ";\n";
-  $output .= "$prefix" . '$workflow->node_types = ' . ctools_var_export($workflow->node_types, $prefix) . ";\n";  
+  
+  //-- Node types are indepdendently exportable now.
+  //-- $output .= "$prefix" . '$workflow->node_types = ' . ctools_var_export($workflow->node_types, $prefix) . ";\n";  
   
   return $output;
   
@@ -335,6 +323,7 @@ function workflow_load_all_callback($reset){
   $cache = &ctools_static(__FUNCTION__);
   $cached_database = &ctools_static('ctools_export_load_object_all');
 
+  ctools_include('export');
   $schema = ctools_export_get_schema($table);
   if (empty($schema)) {
     return array();
@@ -358,10 +347,11 @@ function workflow_load_all_callback($reset){
       //-- If workflow is in database, add artifacts from the joined tables.
       if ($workflow->export_type & EXPORT_IN_DATABASE) {
         $workflow->states = workflow::query_states($workflow->name);  
-        $workflow->transitions = workflow::query_transitions($workflow->states);  
-        $workflow->node_types = workflow::query_nodetypes($workflow->name);  
+        $workflow->transitions = workflow::query_transitions($workflow->states);   
         $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);                
       }
+      //-- Since node types are exported separately, load them even for code-based workflows.
+      $workflow->node_types = workflow::query_nodetypes($workflow->name); 
       $cache[$table][$workflow->{$export['key']}] = $workflow; 
     }
   }
