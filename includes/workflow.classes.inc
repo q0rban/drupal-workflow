@@ -12,6 +12,10 @@
 */
 class workflow_state {
   
+  //-- Newly created (unsaved) states can be distinguished from code-provided ones
+  //-- by whether $sid is set to -1 (code) or not set at all.
+  var $sid = -1;
+  
   var $name;
   var $label;
   

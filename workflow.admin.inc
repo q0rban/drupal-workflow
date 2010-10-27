@@ -953,10 +953,20 @@ function workflow_states_form_submit($form, &$form_state) {
       // Ensure the state has all necessary fields and isn't a system state before saving.
       if (!empty($state['name']) && !empty($state['label']) && empty($state['system_state'])) {
         $state['name'] = strtolower($state['name']);
+
         //-- Prefix new state names with workflow-name to ensure they are unique-enough.
-        if(empty($state['sid']) && $workflow->export_type != WORKFLOW_IN_CODE) {
-          $state['name'] = $state['workflow_name'] . '_' . $state['name'];
+        //-- Caution: this check is specifically "isset()" since states in code would also
+        //-- return TRUE on empty() but their "sid" is already set: to -1.
+        //-- We do not want to add prefix to states from code, only to new states!
+        if(!isset($state['sid'])) {
+          $state['name'] = $workflow->name . '_' . $state['name'];
         }
+        else if ($state['sid']) {
+          //unset -1 as sid for code-provided state so workflow_state_save does not go nuts
+          unset($state['sid']);
+          unset($states[$state_name]['sid']);
+        }
+        
         $state = workflow_state_save((object) $state);
         if (empty($states[$state_name]['sid'])) {
           watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
