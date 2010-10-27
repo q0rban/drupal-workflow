@@ -102,12 +102,14 @@ function workflow_clear_cache() {
  *   Workflow object.
  */
 function workflow_save_transitions($workflow) {
-  // Clean up existing transitions
+  // Clean up existing transitions in the database
   workflow::remove_transitions($workflow->name);
 
   if (is_array($workflow->transitions)) {
     foreach ($workflow->transitions as $trn) {
-      $trn->roles = implode(',', $trn->roles);
+      if (is_array($trn->roles)) {
+        $trn->roles = implode(',', $trn->roles);
+      }
       $record = drupal_write_record('workflow_transitions', $trn);
     }
   }
@@ -223,6 +225,8 @@ function workflow_save($workflow) {
         workflow_node_type_save($workflow->name, $type);
       }
     }
+
+    workflow_save_transitions($workflow);
 
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     cache_clear_all('*', 'cache_menu', TRUE); 

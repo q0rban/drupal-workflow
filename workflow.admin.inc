@@ -451,6 +451,13 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
   
+  $workflow = $form['#workflow'];
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    //-- don't save stale transitions
+    unset($workflow->transitions);
+    workflow_save($workflow);
+  }
+
   $values = $form_state['values']['transitions'];
   foreach ($values as $from_state => $transitions) {
     // Convert the roles array to the expected format.
@@ -461,12 +468,6 @@ function workflow_transition_grid_form_submit($form, &$form_state) {
     workflow_transitions_write($from_state, $transitions);
   }
   
-  $workflow = $form['#workflow'];
-
-  if ($workflow->export_type === WORKFLOW_IN_CODE) {
-    workflow_save($workflow);
-  }
-
   drupal_set_message(t('The workflow transitions were updated.'));
 }
 
@@ -614,6 +615,7 @@ function workflow_states($workflow) {
  */
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
+  $form['#workflow'] = $workflow;  
   
   $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;
@@ -938,14 +940,22 @@ function workflow_states_form_validate($form, &$form_state) {
 function workflow_states_form_submit($form, &$form_state) {
 
   $states = $form_state['values']['states'];
+  $workflow = $form['#workflow'];
+  //-- don't save states from the code, though!
+  unset($workflow->states); 
+
+  //-- Let's make sure workflow is already in the database!  
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
 
   if (is_array($states)) {
-    foreach ($states as $state_name => $state) {
+    foreach ($states as $state_name => $state) {              
       // Ensure the state has all necessary fields and isn't a system state before saving.
       if (!empty($state['name']) && !empty($state['label']) && empty($state['system_state'])) {
         $state['name'] = strtolower($state['name']);
         //-- Prefix new state names with workflow-name to ensure they are unique-enough.
-        if(empty($state['sid'])) {
+        if(empty($state['sid']) && $workflow->export_type != WORKFLOW_IN_CODE) {
           $state['name'] = $state['workflow_name'] . '_' . $state['name'];
         }
         $state = workflow_state_save((object) $state);
