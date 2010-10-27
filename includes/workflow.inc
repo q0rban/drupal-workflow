@@ -38,7 +38,7 @@ function workflow_load($name) {
  * @return
  *   An array of workflows.
  */
-function workflow_load_all($reset = TRUE) {
+function workflow_load_all($reset = FALSE) {
 
   //-- CTools only provides static cache. We need to 
   //-- implement additional cache because workflow_load_all

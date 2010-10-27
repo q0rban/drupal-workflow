@@ -121,6 +121,7 @@ function theme_workflow_deleted_state($label) {
  *   Form definition array.
  */
 function workflow_tab_form($form_state, $node, $workflow, $states, $current_state) {
+
   $form['#tab'] = TRUE;
   $choices = workflow_field_choices($node, $workflow);
 
@@ -134,7 +135,10 @@ function workflow_tab_form($form_state, $node, $workflow, $states, $current_stat
       $default_value = $node->_workflow_scheduled_state_name;
       $timestamp = $node->_workflow_scheduled_timestamp;
       $comment = $node->_workflow_scheduled_comment;
+    } else {
+      $default_value = $node->_workflow;
     }
+    
 
     if (empty($default_value)) {
       $choices_filtered = $choices;
