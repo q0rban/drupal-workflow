@@ -61,6 +61,7 @@ function workflow_schema() {
     'export' => array(
       'key' => 'node_type',
       'object' => 'workflow_type_map',
+      'load all callback' => 'workflow_type_map_load_all_callback',      
       'can disable' => FALSE,
       'identifier' => 'workflow_type_map',
       'api' => array(

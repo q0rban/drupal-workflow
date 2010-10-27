@@ -30,13 +30,11 @@ function node_workflows_alter(&$workflows) {
  *   workflow, the keys will be the workflow's machine name and the value will
  *   be an array of node types for that workflow.
  */
-function workflow_node_type_map_load($orientation = 'node_type') {
+function workflow_node_type_map_load($orientation = 'node_type', $reset = FALSE) {
   static $map;
   
-  $workflows = workflow_load_all();
-
   if (empty($map)) {
-    foreach (workflow_load_all() as $workflow) {
+    foreach (workflow_load_all($reset) as $workflow) {
       $node_types = isset($workflow->node_types) ? $workflow->node_types : array();
       $map['workflow'][$workflow->name] = $node_types;
       foreach ($node_types as $type) {
@@ -46,6 +44,37 @@ function workflow_node_type_map_load($orientation = 'node_type') {
   }
 
   return $map[$orientation];
+}
+
+
+/**
+ * Get workflow - node type mappings .
+ *
+ * @param $workflow_name
+ *   Name of the workflow to load associated node types for. If omitted (NULL) - all mappings will be returned.
+ *
+ * @param $reset
+ *   Boolean to clear the cached workflows.
+ * @return
+ *   An array of workflows.
+ */
+function workflow_type_map_load_all( $workflow_name = NULL, $reset = FALSE) {
+
+  $map = ctools_export_crud_load_all('workflow_type_map', $reset);
+
+  //-- $map contains associative array with $node_type as key, we need one indexed by $workflow_name.
+  $wmap = array();
+  if (is_array($map)) {
+    foreach ($map as $type) {
+      $wmap[$type->workflow_name][] = $type->node_type;
+    }
+  }
+  
+  if (!empty($workflow_name)) {
+    return $wmap[$workflow_name];
+  }
+  
+  return $wmap;
 }
 
 /**
@@ -68,35 +97,6 @@ function workflow_get_db_node_types($name) {
   }
 
   return $type_map[$name];
-}
-
-/**
- * Get workflow - node type mappings .
- *
- * @param $workflow_name
- *   Name of the workflow to load associated node types for. If omitted (NULL) - all mappings will be returned.
- *
- * @param $reset
- *   Boolean to clear the cached workflows.
- * @return
- *   An array of workflows.
- */
-function workflow_type_map_load_all( $workflow_name = NULL, $reset = FALSE) {
-  $map = ctools_export_crud_load_all('workflow_type_map', $reset);
-  //-- $map contains associative array with $node_type as key, we need one indexed by $workflow_name.
-  $wmap = array();
-  
-  if (is_array($map)) {
-    foreach ($map as $type) {
-      $wmap[$type->workflow_name][] = $type->node_type;
-    }
-  }
-  
-  if (!empty($workflow_name)) {
-    return $wmap[$workflow_name];
-  }
-  
-  return $wmap;
 }
 
 /**

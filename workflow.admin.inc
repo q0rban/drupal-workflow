@@ -532,8 +532,7 @@ function theme_workflow_transition_grid_form($form) {
  */
 function workflow_overview() {
   $row = array();
-
-  foreach (workflow_load_all() as $workflow_name => $workflow) {
+  foreach (workflow_load_all(TRUE) as $workflow_name => $workflow) {
     $links = array(
       'workflow_overview_actions' => array(
         'title' => t('Actions'),
@@ -1071,8 +1070,6 @@ function workflow_types_form() {
 
   $options = array('<'. t('None') .'>') + $workflows;
   
-  $opa =  workflow_type_map_load_all();
-  
   $type_map = workflow_node_type_map_load();
 
   $form['#theme'] = 'workflow_types_form';
@@ -1136,10 +1133,12 @@ function workflow_types_form_submit($form, &$form_state) {
   $node_types = $form['#node_types'];
 
   foreach ($node_types as $type => $name) {
-    if ($workflow_name = $form_state['values'][$type]['workflow_name']) {
+    //-- now that type mapping is exportable, we need to save mappings with workflow_name = none, too
+    //-- otherwise they won't be able to override mappings from code and you will never
+    //-- be able to disable a mapping provided from code.
+      $workflow_name = $form_state['values'][$type]['workflow_name'];
       workflow_node_type_save($workflow_name, $type);
-      variable_set('workflow_' . $type, array_keys(array_filter($form_state['values'][$type]['placement'])));
-    }
+      variable_set('workflow_' . $type, array_keys(array_filter($form_state['values'][$type]['placement'])));    
   }
 
   drupal_set_message(t('The workflow mapping was saved.'));

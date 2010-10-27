@@ -137,7 +137,6 @@ class workflow {
     if (!empty(self::$node_types_cache[$workflow_name])) {
       return self::$node_types_cache[$workflow_name];
     }
-
     $types = workflow_type_map_load_all($workflow_name);
 
     self::$node_types_cache[$workflow_name] = $types;
@@ -339,11 +338,11 @@ function workflow_export_callback($workflow, $prefix = '') {
 */
 function workflow_load_all_callback($reset){
 
+  ctools_include('export');
   $table = "workflows";
   $cache = &ctools_static(__FUNCTION__);
   $cached_database = &ctools_static('ctools_export_load_object_all');
 
-  ctools_include('export');
   $schema = ctools_export_get_schema($table);
   if (empty($schema)) {
     return array();
@@ -386,6 +385,55 @@ function workflow_load_all_callback($reset){
   return $cache[$table];
 
 }
+
+function workflow_type_map_load_all_callback($reset) {
+
+  ctools_include('export');
+  $table = "workflow_type_map";
+  $cache = &ctools_static(__FUNCTION__);
+  $cached_database = &ctools_static('ctools_export_load_object_all');
+
+  $schema = ctools_export_get_schema($table);
+  if (empty($schema)) {
+    return array();
+  }
+
+  $export = $schema['export'];
+
+  if (!isset($cache[$table])) {
+    $cache[$table] = array();
+  }
+
+  if (!empty($cached_database[$table]) && !$reset) {
+    return $cache[$table];
+  }
+
+  //-- Load all workflow objects, whether from the DB or code.
+  $types = ctools_export_load_object($table);
+  //-- remove disabled ones:
+  $types = array_filter($types, 'workflow_type_map_remove_empty');
+  
+  if (is_array($types)) {
+    foreach ($types as $type) {     
+      $cache[$table][$workflow->{$export['key']}] = $type; 
+    }
+  }
+
+  $cached_database[$table] = TRUE;
+  return $cache[$table];
+}
+
+
+/**
+* If user wants to disable a type mapping that is provided by code, we need to insert a value
+* in the database, since if there's no value in DB and there's value in code, CTools will
+* continue to serve from code. This filter function will remove values marked as workflow = "#none#" in
+* the DB, when loading mappings from the DB.
+*/
+function workflow_type_map_remove_empty($mapping) {
+  return ($mapping->workflow_name != "0");
+}
+
 
 
 /**
