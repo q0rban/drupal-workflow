@@ -412,10 +412,10 @@ function workflow_type_map_load_all_callback($reset) {
   $types = ctools_export_load_object($table);
   //-- remove disabled ones:
   $types = array_filter($types, 'workflow_type_map_remove_empty');
-  
+
   if (is_array($types)) {
     foreach ($types as $type) {     
-      $cache[$table][$workflow->{$export['key']}] = $type; 
+      $cache[$table][$type->{$export['key']}] = $type; 
     }
   }
 
@@ -430,8 +430,8 @@ function workflow_type_map_load_all_callback($reset) {
 * continue to serve from code. This filter function will remove values marked as workflow = "#none#" in
 * the DB, when loading mappings from the DB.
 */
-function workflow_type_map_remove_empty($mapping) {
-  return ($mapping->workflow_name != "0");
+function workflow_type_map_remove_empty($type) {
+  return ($type->workflow_name != "0");
 }
 
 

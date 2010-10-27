@@ -34,7 +34,9 @@ function workflow_node_type_map_load($orientation = 'node_type', $reset = FALSE)
   static $map;
   
   if (empty($map)) {
-    foreach (workflow_load_all($reset) as $workflow) {
+    $workflows = workflow_load_all($reset);
+
+    foreach ( $workflows as $workflow) {
       $node_types = isset($workflow->node_types) ? $workflow->node_types : array();
       $map['workflow'][$workflow->name] = $node_types;
       foreach ($node_types as $type) {
@@ -42,7 +44,6 @@ function workflow_node_type_map_load($orientation = 'node_type', $reset = FALSE)
       }
     }
   }
-
   return $map[$orientation];
 }
 
@@ -73,7 +74,6 @@ function workflow_type_map_load_all( $workflow_name = NULL, $reset = FALSE) {
   if (!empty($workflow_name)) {
     return $wmap[$workflow_name];
   }
-  
   return $wmap;
 }
 
