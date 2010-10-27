@@ -119,6 +119,33 @@ class workflow {
   }
   static $states_cache = array();   
 
+
+  /**
+  * Query database for the node types associated with the current workflow 
+  *
+  * @param $workflow_name
+  *   The machine name of the workflow
+  *
+  * @return
+  *   The array of node_type names associated with the workflow from the database.  
+  */
+  static function query_nodetypes($workflow_name) {
+    if (empty($workflow_name)) {
+      return array();
+    }
+    
+    if (!empty(self::$node_types_cache[$workflow_name])) {
+      return self::$node_types_cache[$workflow_name];
+    }
+
+    $types = workflow_type_map_load_all($workflow_name);
+
+    self::$node_types_cache[$workflow_name] = $types;
+    return $types;
+  }
+  static $node_types_cache = array();
+ 
+  
   /**
   * Query database for the transitions associated with a list of states
   * (there's no direct association of transitions and a workflow in the module's data model) 
@@ -160,31 +187,7 @@ class workflow {
     }
     return $transitions;
   }
-  
-  /**
-  * Query database for the node types associated with the current workflow 
-  *
-  * @param $workflow_name
-  *   The machine name of the workflow
-  *
-  * @return
-  *   The array of node_type names associated with the workflow from the database.  
-  */
-  static function query_nodetypes($workflow_name) {
-    if (empty($workflow_name)) {
-      return array();
-    }
     
-    if (!empty(self::$node_types_cache[$workflow_name])) {
-      return self::$node_types_cache[$workflow_name];
-    }
-
-    $types = workflow_type_map_load_all($workflow_name);
-
-    self::$node_types_cache[$workflow_name] = $types;
-    return $types;
-  }
-  static $node_types_cache = array();
   
   /**
   * Remove role transitions for a specific workflow.
@@ -213,6 +216,24 @@ class workflow {
     }
 
   }
+  
+  
+  /**
+  * Attach available transitions to roles. This makes calculating available transitions
+  * much easier through-out the rest of the application.
+  *
+  */        
+  function arrange_transitions() {
+    
+    if (is_array($this->transitions)) {
+      foreach ($this->transitions as $trn) {
+        if (isset($this->states[$trn->state_name])) {
+          $this->states[$trn->state_name]->transitions[$trn->target_state_name] = $trn;
+        }
+      }
+    }
+  }
+
   
 }
 
@@ -349,8 +370,14 @@ function workflow_load_all_callback($reset){
         $workflow->transitions = workflow::query_transitions($workflow->states);   
         $workflow->roles = workflow::tab_roles_to_array($workflow->tab_roles);                
       }
+      
       //-- Since node types are exported separately, load them even for code-based workflows.
       $workflow->node_types = workflow::query_nodetypes($workflow->name); 
+      
+      //-- Attach available transitions to roles. This makes calculating available transitions
+      //-- much easier through-out the rest of the application.
+      $workflow->arrange_transitions();  
+    
       $cache[$table][$workflow->{$export['key']}] = $workflow; 
     }
   }

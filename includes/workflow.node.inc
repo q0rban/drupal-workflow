@@ -71,6 +71,35 @@ function workflow_get_db_node_types($name) {
 }
 
 /**
+ * Get workflow - node type mappings .
+ *
+ * @param $workflow_name
+ *   Name of the workflow to load associated node types for. If omitted (NULL) - all mappings will be returned.
+ *
+ * @param $reset
+ *   Boolean to clear the cached workflows.
+ * @return
+ *   An array of workflows.
+ */
+function workflow_type_map_load_all( $workflow_name = NULL, $reset = FALSE) {
+  $map = ctools_export_crud_load_all('workflow_type_map', $reset);
+  //-- $map contains associative array with $node_type as key, we need one indexed by $workflow_name.
+  $wmap = array();
+  
+  if (is_array($map)) {
+    foreach ($map as $type) {
+      $wmap[$type->workflow_name][] = $type->node_type;
+    }
+  }
+  
+  if (!empty($workflow_name)) {
+    return $wmap[$workflow_name];
+  }
+  
+  return $wmap;
+}
+
+/**
  * Get a workflow for a node type.
  *
  * @param $type
@@ -79,20 +108,11 @@ function workflow_get_db_node_types($name) {
  *   The workflow object.
  */
 function workflow_get_workflow_for_type($type) {
-  static $cache;
-
-  if (!isset($cache)) {
-    $cache = array();
-    foreach (workflow_load_all() as $workflow) {
-      if (!empty($workflow->node_types)) {
-        foreach ($workflow->node_types as $node_type) {
-          $cache[$node_type] = $workflow;
-        }
-      }
-    }
-  }
-
-  return empty($cache[$type]) ? FALSE : $cache[$type];
+  $map = ctools_export_crud_load_all('workflow_type_map', $reset);  
+  $name =  isset($map[$type]) ? $map[$type]->workflow_name : FALSE;
+  if ($name === FALSE) return;
+  
+  return workflow_load($name);
 }
 
 /**
