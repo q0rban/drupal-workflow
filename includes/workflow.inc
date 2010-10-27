@@ -359,7 +359,8 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
   }
 
   $states = $workflows[$workflow_name]->states;
-  return $all ? $states : array_filter($states, 'workflow_state_is_active');
+  $filtered_states = is_array($states) ? array_filter($states, 'workflow_state_is_active') : array();
+  return $all ? $states : $filtered_states;
 }
 
 /**
