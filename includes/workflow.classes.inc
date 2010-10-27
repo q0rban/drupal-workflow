@@ -258,7 +258,6 @@ function workflow_export_crud_delete($object) {
   workflow::remove_transitions($workflow_name);
   
   db_query("DELETE FROM {workflows} WHERE " . $export['key'] . " = '%s'", $workflow_name);
-  db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $workflow_name);  
   db_query("DELETE FROM {workflow_states} WHERE workflow_name = '%s'", $workflow_name);    
   
   // Workflow deletion may affect tabs (local tasks), so force menu rebuild.
