@@ -242,7 +242,11 @@ function workflow_views_api() {
 function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
   switch ($op) {
     case 'load':
-      $node->_workflow = workflow_node_current_state($node);
+      $curr_state = workflow_node_current_state($node);
+      //-- is current node type managed by a workflow?
+      if (!empty($curr_state)) {
+        $node->_workflow = $curr_state;
+      }
 
       // Add scheduling information.
       $res = db_query('SELECT * FROM {workflow_scheduled_transition} WHERE nid = %d', $node->nid);

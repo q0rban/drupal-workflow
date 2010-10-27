@@ -141,7 +141,11 @@ function workflow_node_type_save($workflow_name, $node_type) {
  */
 function workflow_node_current_state($node) {
   $state_name = FALSE;
-
+  
+  $wf_for_type = workflow_get_workflow_for_type($node->type);
+  //-- check that this node type is indeed managed by a workflow
+  if (empty($wf_for_type)) return FALSE;
+  
   // There is no nid when creating a node.
   if (!empty($node->nid)) {
     $state_name = db_result(db_query('SELECT state_name FROM {workflow_node} WHERE nid = %d', $node->nid));
