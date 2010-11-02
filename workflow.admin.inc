@@ -582,9 +582,20 @@ function workflow_overview() {
 */
 function workflow_overview_parse_links($links, $workflow) {
 
- $suffix = "";
- $suffix = strtolower($workflow->type);
+  $suffix = "";
+  $suffix = strtolower($workflow->type);
  
+  //-- Unfortunately, we can not just deduce $suffix from $workflow->type, because "type" gets translated and it does not work in non-English languages.
+  if (($workflow->export_type & EXPORT_IN_CODE) && ($workflow->export_type & EXPORT_IN_DATABASE)) {
+    $suffix = 'ovrridden';
+  }
+  else if ($workflow->export_type == EXPORT_IN_CODE) {
+    $suffix = 'default';
+  }
+  else if ($workflow->export_type == EXPORT_IN_DATABASE) {
+    $suffix = 'normal';
+  }
+   
   if (is_array($links)) {
     foreach ($links as &$link) {
       if (isset($link["title_" . $suffix])) {
@@ -598,6 +609,7 @@ function workflow_overview_parse_links($links, $workflow) {
   
   return $links;
 }
+
 
 /**
  * Page callback for the Workflow States tab.
