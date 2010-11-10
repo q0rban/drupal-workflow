@@ -268,7 +268,11 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         $node->workflow = array_shift($keys);
       }
 
-      workflow_transition($node, $node->workflow, $workflow);
+      //-- $node->workflow is misnamed and is actually the name of the workflow state 
+      //-- that user is trying to switch to.
+      $state = workflow_get_state($node->workflow);
+      $workflow = workflow_load($state->workflow_name);
+      workflow_transition($node, $state->name, $workflow);
       break;
 
     case 'update':
