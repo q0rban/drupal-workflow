@@ -450,7 +450,6 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
  * @see workflow_transition_grid_form().
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
-  
   $workflow = $form['#workflow'];
   if ($workflow->export_type == WORKFLOW_IN_CODE) {
     //-- don't save stale transitions
@@ -467,7 +466,9 @@ function workflow_transition_grid_form_submit($form, &$form_state) {
     
     workflow_transitions_write($from_state, $transitions);
   }
-  
+
+  workflow_invalidate_cache();
+
   drupal_set_message(t('The workflow transitions were updated.'));
 }
 
@@ -949,7 +950,6 @@ function workflow_states_form_validate($form, &$form_state) {
  * @see workflow_states_form()
  */
 function workflow_states_form_submit($form, &$form_state) {
-
   $states = $form_state['values']['states'];
   $workflow = $form['#workflow'];
   //-- don't save states from the code, though!
@@ -987,7 +987,8 @@ function workflow_states_form_submit($form, &$form_state) {
       }
     }
   }
-  workflow_clear_cache();
+
+  workflow_invalidate_cache();
 }
 
 /**

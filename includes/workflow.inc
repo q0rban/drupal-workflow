@@ -26,8 +26,7 @@ define('WORKFLOW_IN_CODE', 0x02);
  */
 function workflow_load($name) {
   $workflows = workflow_load_all();
-  $workflow =  empty($workflows[$name]) ? FALSE : $workflows[$name];
-  return $workflow;
+  return empty($workflows[$name]) ? FALSE : $workflows[$name];
 }
 
 /**
@@ -39,22 +38,19 @@ function workflow_load($name) {
  *   An array of workflows.
  */
 function workflow_load_all($reset = FALSE) {
+  static $workflows;
 
-  //-- CTools only provides static cache. We need to 
-  //-- implement additional cache because workflow_load_all
-  //-- can be a heavy operation.
-  if (!$reset && $cache = cache_get('workflows')) {
-    $workflows = $cache->data;
+  // Use the cached workflows if they are available and reset is FALSE.
+  if (!$reset && (isset($workflows) || (($cache = cache_get('workflows')) && $workflows = $cache->data))) {
     return $workflows;
   }
-  
+
   ctools_include('export');
   $workflows = ctools_export_crud_load_all('workflows', $reset);
   drupal_alter('workflows', $workflows);
   
   cache_set('workflows', $workflows);
   return $workflows;
-
 }
 
 
@@ -87,14 +83,6 @@ function workflow_invalidate_cache() {
 }
 
 /**
- * Removes workflow cache. For functions like workflow_state_save, calling this function
- * is much faster than calling workflow_invalidate_cache.
- */
-function workflow_clear_cache() {
-  cache_clear_all('workflows', 'cache', FALSE);
-}
-
-/**
  * Write the transition roles for a workflow object. This function is in particular needed
  * when saving in_code workflow to database (during "override").
  *
@@ -114,7 +102,7 @@ function workflow_save_transitions($workflow) {
     }
   }
 
-  workflow_clear_cache();
+   workflow_invalidate_cache();
 }
 
 /**
@@ -129,22 +117,14 @@ function workflow_transitions_write($from_state, $transitions) {
   // Clean up existing
   db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
-  if (is_array($transitions)) {
-    foreach ($transitions as $to_state => $roles) {
-      //-- Do not save empty records.
-      if (!is_array($roles) || sizeof($roles) < 1 ) continue;
-      $transition = array();
-      $transition['state_name'] = $from_state;
-      $transition['target_state_name'] = $to_state;
-      $transition['roles'] = implode(',', $roles);
-  
-      $record = drupal_write_record('workflow_transitions', $transition);
-    }
-  }
+  foreach ($transitions as $to_state => $roles) {
+    $transition = array();
+    $transition['state_name'] = $from_state;
+    $transition['target_state_name'] = $to_state;
+    $transition['roles'] = implode(',', $roles);
 
-  // This function is called repeatedly during grid save, hence calling
-  // workflow_invalidate_cache and reloading workflow every time would make it too slow.
-  workflow_clear_cache();
+    $record = drupal_write_record('workflow_transitions', $transition);
+  }
 
   return $record;
 }
@@ -187,10 +167,7 @@ function workflow_get_label($name) {
  *   The saved workflow object.
  */
 function workflow_save($workflow) {
-  
-  if (!is_object($workflow)) {
-    $workflow = (object) $workflow;
-  }
+  $workflow = (object) $workflow;
 
   $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
   if (!is_array($workflow->options)) {
@@ -436,7 +413,7 @@ function workflow_state_save($state) {
     workflow_transitions_write($state->name, $state->transitions);
   }
 
-  workflow_clear_cache();
+   workflow_invalidate_cache();
 
   return $state;
 }
