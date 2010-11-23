@@ -174,7 +174,6 @@ function workflow_save($workflow) {
     }
 
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
-    cache_clear_all('*', 'cache_menu', TRUE); 
     menu_rebuild();
     workflow_invalidate_cache();
   }
@@ -205,7 +204,6 @@ function workflow_deletewf($name) {
   menu_rebuild();
   workflow_invalidate_cache();
 }
-
 
 /**
  * Load workflow state labels for a workflow. If $workflow_name is not passed,
@@ -268,8 +266,7 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
       // We iterate through all the states so that we can prepend the Workflow
       // label to the state label.
       foreach ($workflows as $workflow) {
-        $var_states = $workflow->states;
-        foreach ($var_states as $name => $state) {
+        foreach ($workflow->states as $name => $state) {
           $state->label = $workflow->label .': '. $state->label;
           $all_states[$name] = $state;
           // Keep the active only states in a separate array.
