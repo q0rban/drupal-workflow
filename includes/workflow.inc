@@ -48,7 +48,7 @@ function workflow_load_all($reset = FALSE) {
   ctools_include('export');
   $workflows = ctools_export_crud_load_all('workflows', $reset);
   drupal_alter('workflows', $workflows);
-  
+
   cache_set('workflows', $workflows);
   return $workflows;
 }
@@ -80,29 +80,6 @@ function workflow_load_all_labels() {
  */
 function workflow_invalidate_cache() {
   workflow_load_all(TRUE);
-}
-
-/**
- * Write the transition roles for a workflow object. This function is in particular needed
- * when saving in_code workflow to database (during "override").
- *
- * @param $workflow
- *   Workflow object.
- */
-function workflow_save_transitions($workflow) {
-  // Clean up existing transitions in the database
-  workflow::remove_transitions($workflow->name);
-
-  if (is_array($workflow->transitions)) {
-    foreach ($workflow->transitions as $trn) {
-      if (is_array($trn->roles)) {
-        $trn->roles = implode(',', $trn->roles);
-      }
-      $record = drupal_write_record('workflow_transitions', $trn);
-    }
-  }
-
-   workflow_invalidate_cache();
 }
 
 /**
@@ -170,19 +147,12 @@ function workflow_save($workflow) {
   $workflow = (object) $workflow;
 
   $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
-  if (!is_array($workflow->options)) {
-    $workflow->options = array();
-  }
-  $workflow->options += $default_options;
-  
-  if (!empty($workflow->wid)) {
-    $ret = drupal_write_record('workflows', $workflow, "wid");
-  }
-  else {
-    $ret = drupal_write_record('workflows', $workflow);    
-  }
+  // Union the default options in, respecting overrides.
+  (array) $workflow->options += $default_options;
 
-  if ($ret) {
+  $options = empty($workflow->wid) ? array() : array('wid');
+
+  if (drupal_write_record('workflows', $workflow, $options)) {
     if (empty($workflow->states)) {
       $state = new stdClass();
       $state->name = _workflow_creation_state($workflow->name);
@@ -202,8 +172,6 @@ function workflow_save($workflow) {
         workflow_node_type_save($workflow->name, $type);
       }
     }
-
-    workflow_save_transitions($workflow);
 
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
     cache_clear_all('*', 'cache_menu', TRUE); 
