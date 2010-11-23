@@ -183,26 +183,6 @@ function workflow_save($workflow) {
 }
 
 /**
- * Update an existing workflow.
- *
- * @param $workflow
- *   The workflow object to update.
- * @return
- *   The updated workflow object.
- */
-function workflow_update($workflow) {
-  $workflow = (object) $workflow;
-  $workflow->tab_roles = is_array($workflow->tab_roles) ? implode(',', $workflow->tab_roles) : $workflow->tab_roles;
-  $workflow = drupal_write_record('workflows', $workflow, 'wid');
-  // Workflow name change affects tabs (local tasks), so force menu rebuild.
-  cache_clear_all('*', 'cache_menu', TRUE);
-  menu_rebuild();
-  workflow_invalidate_cache();
-
-  return $workflow;
-}
-
-/**
  * Delete a workflow from the database. Deletes all states,
  * transitions and node type mappings, too. Removes workflow state
  * information from nodes participating in this workflow.
