@@ -313,7 +313,7 @@ function workflow_edit_form_submit($form, &$form_state) {
   $values = $form_state['values'];
   $workflow = $form['#workflow'];
   if (is_array($values)) {
-    foreach($values as $key => $val) {
+    foreach ($values as $key => $val) {
       if ($key == 'wid') continue;
       if (isset($workflow->$key)) {
         if ($key == "tab_roles") {
@@ -587,12 +587,12 @@ function workflow_overview_parse_links($links, $workflow) {
  
   //-- Unfortunately, we can not just deduce $suffix from $workflow->type, because "type" gets translated and it does not work in non-English languages.
   if (($workflow->export_type & EXPORT_IN_CODE) && ($workflow->export_type & EXPORT_IN_DATABASE)) {
-    $suffix = 'ovrridden';
+    $suffix = 'overridden';
   }
-  else if ($workflow->export_type == EXPORT_IN_CODE) {
+  elseif ($workflow->export_type == EXPORT_IN_CODE) {
     $suffix = 'default';
   }
-  else if ($workflow->export_type == EXPORT_IN_DATABASE) {
+  elseif ($workflow->export_type == EXPORT_IN_DATABASE) {
     $suffix = 'normal';
   }
    
@@ -970,10 +970,10 @@ function workflow_states_form_submit($form, &$form_state) {
         //-- Caution: this check is specifically "isset()" since states in code would also
         //-- return TRUE on empty() but their "sid" is already set: to -1.
         //-- We do not want to add prefix to states from code, only to new states!
-        if(!isset($state['sid'])) {
+        if (!isset($state['sid'])) {
           $state['name'] = $workflow->name . '_' . $state['name'];
         }
-        else if ($state['sid']) {
+        elseif ($state['sid'] == -1) {
           //unset -1 as sid for code-provided state so workflow_state_save does not go nuts
           unset($state['sid']);
           unset($states[$state_name]['sid']);

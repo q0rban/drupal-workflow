@@ -425,6 +425,7 @@ function workflow_get_state_label($name) {
  *   The ID of the new or updated workflow state.
  */
 function workflow_state_save($state) {
+
   if (!isset($state->sid)) {
     $ret = drupal_write_record('workflow_states', $state);
   }

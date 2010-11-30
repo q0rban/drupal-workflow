@@ -1,6 +1,6 @@
 <?php
 
-// $Id:$
+// $Id$
 
 /**
  * @file
@@ -73,11 +73,11 @@ class workflow {
 
   static function tab_roles_to_array($tab_roles) {
       // If no roles are set yet, return empty array.
-      if(empty($tab_roles)) {
+      if (empty($tab_roles)) {
         return array();
       }
       // If it's a single value return a single-value array.
-      else if(strpos($tab_roles, ",") === FALSE) {
+      elseif (strpos($tab_roles, ",") === FALSE) {
         return array($tab_roles);
       }
       // If none of the above, we should have a comma-separated list
@@ -340,7 +340,7 @@ function workflow_export_callback($workflow, $prefix = '') {
 /**
 * Load all callback implementation for an exportable worklow
 */
-function workflow_load_all_callback($reset){
+function workflow_load_all_callback($reset) {
 
   ctools_include('export');
   $table = "workflows";

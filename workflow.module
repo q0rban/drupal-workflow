@@ -268,11 +268,7 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
         $node->workflow = array_shift($keys);
       }
 
-      //-- $node->workflow is misnamed and is actually the name of the workflow state 
-      //-- that user is trying to switch to.
-      $state = workflow_get_state($node->workflow);
-      $workflow = workflow_load($state->workflow_name);
-      workflow_transition($node, $state->name, $workflow);
+      workflow_transition($node, $node->workflow, $workflow);
       break;
 
     case 'update':
@@ -633,7 +629,7 @@ function workflow_token_values($type, $object = NULL) {
         $mail = $node->uid ? $node->user_mail : '';
         $comment = $node->workflow_comment;
       }
-      else if (!isset($node->workflow) && empty($row->state_name)) {
+      elseif (!isset($node->workflow) && empty($row->state_name)) {
         // If the state is not specified and the node has no workflow history,
         // the node is being inserted and will soon be transitioned to the first valid state.
         // We find this state using the same logic as workflow_nodeapi().

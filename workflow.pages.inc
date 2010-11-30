@@ -135,7 +135,8 @@ function workflow_tab_form($form_state, $node, $workflow, $states, $current_stat
       $default_value = $node->_workflow_scheduled_state_name;
       $timestamp = $node->_workflow_scheduled_timestamp;
       $comment = $node->_workflow_scheduled_comment;
-    } else {
+    } 
+    else {
       $default_value = $node->_workflow;
     }
     
