@@ -60,7 +60,7 @@ function workflow_node_type_map_load($orientation = 'node_type', $reset = FALSE)
  *   An array of workflows.
  */
 function workflow_type_map_load_all( $workflow_name = NULL, $reset = FALSE) {
-
+  ctools_include('export');
   $map = ctools_export_crud_load_all('workflow_type_map', $reset);
 
   //-- $map contains associative array with $node_type as key, we need one indexed by $workflow_name.
@@ -108,6 +108,7 @@ function workflow_get_db_node_types($name) {
  *   The workflow object.
  */
 function workflow_get_workflow_for_type($type) {
+  ctools_include('export');
   $map = ctools_export_crud_load_all('workflow_type_map', $reset);  
   $name =  isset($map[$type]) ? $map[$type]->workflow_name : FALSE;
   if ($name === FALSE) return;
