@@ -31,10 +31,16 @@ function workflow_access_menu() {
  * roles as access lists, so rids translate directly to gids.
  */
 function workflow_access_node_grants($account, $op) {
-  return array(
-    'workflow_access'       => array_keys($account->roles),
-    'workflow_access_owner' => array($account->uid),
-  );
+  $grants = array();
+  foreach ($account->roles as $rid => $name) {
+    // The $account->roles will have an author index during some operations
+    if($rid != "author") {
+      $grants['workflow_access'][] = $rid;
+    }
+  }
+  $grants['workflow_access_owner'][] = $account->uid;
+
+  return $grants;
 }
 
 /**
