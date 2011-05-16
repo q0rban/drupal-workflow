@@ -25,16 +25,23 @@ class workflow_views_handler_filter_state_name extends views_handler_filter_in_o
       return;
     }
     $this->ensure_my_table();
-    $placeholder = !empty($this->definition['numeric']) ? '%d' : "'%s'";
+
+    // Somewhere $this->definition['numeric'] is set to TRUE but this is wrong.
+    // state_name will always be a string
+    // TODO Hunt down where $this->definition['numeric'] is being set
+    // $placeholder = !empty($this->definition['numeric']) ? '%d' : "'%s'";
+    $placeholder = "'%s'";
 
     if (count($this->value) == 1) {
       $this->operator = ($this->operator == 'in') ? '= ' : '!= ';
-      $in = !empty($this->definition['numeric']) ? '%d' : "'%s'";
+      // $in = !empty($this->definition['numeric']) ? '%d' : "'%s'";
+      $in = $placeholder;
     }
     else {
       $replace = array_fill(0, sizeof($this->value), $placeholder);
       $in = ' (' . implode(", ", $replace) . ')';
     }
-    $this->query->add_where($this->options['group'], "$this->table_alias.$this->real_field " . $this->operator . $in, $this->value);
+    $value = array_keys($this->value);
+    $this->query->add_where($this->options['group'], "$this->table_alias.$this->real_field " . $this->operator . $in, $value);
   }
 }
