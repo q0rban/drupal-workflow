@@ -263,7 +263,6 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // initial state.
       $workflow = workflow_get_workflow_for_type($node->type);
       if (empty($node->workflow)) {
-        $workflow = workflow_get_workflow_for_type($node->type);
         $choices = workflow_field_choices($node, $workflow);
         $keys = array_keys($choices);
         // Skip the creation state, choose the second index
