@@ -261,13 +261,13 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // If the state is not specified, use first valid state.
       // For example, a new node must move from (creation) to some
       // initial state.
+      $workflow = workflow_get_workflow_for_type($node->type);
       if (empty($node->workflow)) {
-        $workflow = workflow_get_workflow_for_type($node->type);
         $choices = workflow_field_choices($node, $workflow);
         $keys = array_keys($choices);
-        $node->workflow = array_shift($keys);
+        // Skip the creation state, choose the second index
+        $node->workflow = $keys[1];
       }
-
       workflow_transition($node, $node->workflow, $workflow);
       break;
 
