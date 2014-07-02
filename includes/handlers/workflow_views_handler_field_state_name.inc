@@ -23,6 +23,6 @@ class workflow_views_handler_field_state_name extends views_handler_field {
     if (empty($output)) {
       $output = t('Unknown state');
     }
-    return check_plain($output);
+    return check_plain($output->label);
   }
 }

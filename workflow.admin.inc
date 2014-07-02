@@ -16,6 +16,7 @@ function workflow_add_form(&$form_state) {
     '#title' => t('Workflow Label'),
     '#required' => TRUE,
     '#maxlength' => '254',
+    '#width' => 120,
   );
   $form['name'] = array(
     '#type' => 'textfield',
@@ -82,6 +83,7 @@ function workflow_add_form_submit($form, &$form_state) {
     watchdog('workflow', 'There was an error creating workflow %label', array('%label' => $values['label']), WATCHDOG_WARNING);
     drupal_set_message(t('There was a problem saving this workflow. Please contact your site administrator.'), 'warning');
   }
+  workflow_invalidate_cache();
 }
 
 /**
@@ -124,6 +126,47 @@ function workflow_delete_form_submit($form, &$form_state) {
 }
 
 /**
+ * Form for confirmation of workflow revert.
+ *
+ * @param $name
+ *   The machine name of the workflow to revert.
+ * @return
+ *   Confirmation form array.
+ */
+function workflow_revert_form(&$form_state, $name) {
+  $form['name'] = array(
+    '#type' => 'value',
+    '#value' => $name,
+  );
+  return confirm_form(
+    $form,
+    t('Are you sure you want to revert %title? Configuration will switch to the one provided by code.', array('%title' => workflow_get_label($name))),
+    !empty($_GET['destination']) ? $_GET['destination'] : 'admin/build/workflow',
+    t('This action cannot be undone.'),
+    t('Revert'),
+    t('Cancel')
+  );
+}
+
+
+/**
+ * Submit handler for workflow revert form.
+ *
+ * @see workflow_revert_form()
+ */
+function workflow_revert_form_submit($form, &$form_state) {
+  if ($form_state['values']['confirm'] == 1) {
+    $name = $form_state['values']['name'];
+    $label = workflow_get_label($name);
+    workflow_export_crud_delete($name);
+    watchdog('workflow', 'Reverted workflow %label with all its states', array('%label' => $label));
+    drupal_set_message(t('The workflow %label with all its states was reverted.', array('%label' => $label)));
+    $form_state['redirect'] = 'admin/build/workflow';
+  }
+}
+
+
+/**
  * View workflow permissions by role
  *
  * @param $workflow
@@ -131,19 +174,21 @@ function workflow_delete_form_submit($form, &$form_state) {
  */
 function workflow_permissions($workflow) {
   $map = array();
-  $roles = array('author' => t('author')) + user_roles();
+  $roles = workflow_get_roles();
+  $transitions = $workflow->transitions;
+  $states = $workflow->states;
 
-  foreach ($workflow->states as $state) {
-    foreach ($state->transitions as $to_state => $allowed_roles) {
-      foreach ($allowed_roles as $role) {
-        $map[$role]['transitions'][] = array($workflow->states[$state->name]->label, WORKFLOW_ARROW, $workflow->states[$to_state]->label);
+  if (is_array($transitions)) {
+    foreach ($transitions as $trn) {
+      if (is_array($trn->roles)) {
+        foreach ($trn->roles as $role) {
+          $from = isset($states[$trn->state_name]) ? $states[$trn->state_name]->label : "";
+          $to = isset($states[$trn->target_state_name]) ? $states[$trn->target_state_name]->label : "";
+          $map[$role]['transitions'][] = array($from, WORKFLOW_ARROW, $to);
+          $map[$role]['name'] = ucwords($roles[$role]);
+        }
       }
     }
-  }
-
-  // Set up the labels.
-  foreach (array_keys($map) as $role) {
-    $map[$role]['name'] = $roles[$role];
   }
 
   return theme('workflow_permissions', $map);
@@ -264,13 +309,27 @@ function workflow_edit_form_validate($form, &$form_state) {
  * @see workflow_edit_form()
  */
 function workflow_edit_form_submit($form, &$form_state) {
+
+  $values = $form_state['values'];
   $workflow = $form['#workflow'];
-  if ($workflow->export_type === WORKFLOW_IN_CODE) {
-    workflow_save($workflow);
+  if (is_array($values)) {
+    foreach ($values as $key => $val) {
+      if ($key == 'wid') continue;
+      if (isset($workflow->$key)) {
+        if ($key == "tab_roles") {
+          $worfklow->roles = $val;        
+          $val = implode(',', array_values($val));          
+        }
+        $workflow->$key = $val;
+      }
+    }
   }
-  else {
-    workflow_update($form_state['values']);
+  
+  // Saving object from code
+  if ($workflow->export_type == EXPORT_IN_CODE) {
+    workflow_save_transitions($workflow);
   }
+  workflow_save($workflow);
   drupal_set_message(t('The workflow was updated.'));
 }
 
@@ -284,6 +343,8 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
   $form = array();
   $form['#workflow'] = $workflow;
 
+  $transitions_matrix = workflow_transitions_to_matrix($workflow->transitions);
+
   $form['transitions'] = array(
     '#type' => 'fieldset',
     '#title' => t('Transitions'),
@@ -291,7 +352,7 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
     '#tree' => TRUE,
   );
 
-  $roles = workflow_get_roles();
+  $roles = workflow_get_roles(); 
   $states = $workflow->states;
   if (empty($states)) {
     $form = array(
@@ -300,23 +361,26 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
     );
     return $form;
   }
-  foreach ($states as $state_name => $state) {
-    foreach ($states as $nested_state_name => $nested_state) {
+
+  foreach ($states as $state) {
+    foreach ($states as $nested_state) {
       if (workflow_is_system_state($nested_state->label)) {
         // Don't allow transition TO (creation).
         continue;
       }
-      if ($nested_state_name != $state_name) {
+      if ($nested_state->name != $state->name) {
         // Need to generate checkboxes for transition from $state to $nested_state.
-        $from = $state_name;
-        $to = $nested_state_name;
+        $from = $state;
+        $to = $nested_state;
         foreach ($roles as $rid => $role_name) {
-          $transitions = $workflow->states[$from]->transitions;
-          $transition_roles = isset($transitions[$to]) ? $transitions[$to] : array();
-          $form['transitions'][$from][$to][$rid] = array(
+          $default_value = 0;
+          if (isset($transitions_matrix[$from->name][$to->name])) {
+            $default_value = in_array($rid, $transitions_matrix[$from->name][$to->name]);
+          }
+          $form['transitions'][$from->name][$to->name][$rid] = array(
             '#type' => 'checkbox',
             '#title' => check_plain($role_name),
-            '#default_value' => in_array($rid, $transition_roles),
+            '#default_value' => $default_value,
           );
         }
       }
@@ -341,6 +405,21 @@ function workflow_transition_grid_form(&$form_state, $workflow) {
 }
 
 /**
+* Convert an array of transition objects to a 2-dimensional array, more appropriate for quick lookups.
+*/
+function workflow_transitions_to_matrix($transitions) {
+  $matrix = array();
+  if (is_array($transitions)) {
+    foreach ($transitions as $trn) {
+      $matrix[$trn->state_name][$trn->target_state_name] = $trn->roles;      
+    }
+  }
+  
+  return $matrix;
+  
+}
+
+/**
  * Validation handler for the transition_grid_form.
  *
  * @see workflow_transition_grid_form().
@@ -349,6 +428,7 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
   $workflow = $form['#workflow'];
   // Make sure 'author' is checked for (creation) -> [something].
   $creation_state = _workflow_creation_state($workflow->name);
+
   if (isset($form_state['values']['transitions'][$creation_state]) && is_array($form_state['values']['transitions'][$creation_state])) {
     foreach ($form_state['values']['transitions'][$creation_state] as $to => $roles) {
       if ($roles['author']) {
@@ -370,21 +450,24 @@ function workflow_transition_grid_form_validate($form, &$form_state) {
  * @see workflow_transition_grid_form().
  */
 function workflow_transition_grid_form_submit($form, &$form_state) {
+  
+  $workflow = $form['#workflow'];
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    //-- don't save stale transitions
+    unset($workflow->transitions);
+    workflow_save($workflow);
+  }
+
   $values = $form_state['values']['transitions'];
   foreach ($values as $from_state => $transitions) {
     // Convert the roles array to the expected format.
     foreach ($transitions as $to_state => $roles) {
       $transitions[$to_state] = array_keys(array_filter($roles));
     }
+    
     workflow_transitions_write($from_state, $transitions);
   }
-
-  $workflow = $form['#workflow'];
-
-  if ($workflow->export_type === WORKFLOW_IN_CODE) {
-    workflow_save($workflow);
-  }
-
+  
   drupal_set_message(t('The workflow transitions were updated.'));
 }
 
@@ -403,24 +486,24 @@ function theme_workflow_transition_grid_form($form) {
     $roles = workflow_get_roles();
     $header = array(array('data' => t('From / To ') . '&nbsp;' . WORKFLOW_ARROW));
     $rows = array();
-    foreach ($states as $state_name => $state) {
+    foreach ($states as $state) {
       // Don't allow transition TO (creation).
       if (!workflow_is_system_state($state->label)) {
         $header[] = array('data' => $state->label);
       }
       $row = array(array('data' => $state->label));
-      foreach ($states as $nested_state_name => $nested_state) {
+      foreach ($states as $nested_state) {
         if (workflow_is_system_state($nested_state->label)) {
           // Don't allow transition TO (creation).
           continue;
         }
-        if ($nested_state_name != $state_name) {
+        if ($nested_state->name != $state->name) {
           // Need to render checkboxes for transition from $state to $nested_state.
-          $from = $state_name;
-          $to = $nested_state_name;
+          $from = $state;
+          $to = $nested_state;
           $cell = '';
           foreach ($roles as $rid => $role_name) {
-            $cell .= drupal_render($form['transitions'][$from][$to][$rid]);
+            $cell .= drupal_render($form['transitions'][$from->name][$to->name][$rid]);
           }
           $row[] = array('data' => $cell);
         }
@@ -449,18 +532,24 @@ function theme_workflow_transition_grid_form($form) {
  */
 function workflow_overview() {
   $row = array();
-
-  foreach (workflow_load_all() as $workflow_name => $workflow) {
+  foreach (workflow_load_all(TRUE) as $workflow_name => $workflow) {
     $links = array(
       'workflow_overview_actions' => array(
         'title' => t('Actions'),
         'href' => "admin/build/trigger/workflow/$workflow_name"),
       'workflow_overview_edit' => array(
         'title' => t('Edit'),
+        'title_default' => t('Override'),
         'href' => "admin/build/workflow/edit/$workflow_name"),
       'workflow_overview_delete' => array(
         'title' => t('Delete'),
-        'href' => "admin/build/workflow/delete/$workflow_name"),
+         // You can not delete a default workflow
+        'title_default' => '',         
+        'title_overridden' => t('Revert'),
+        'href' => "admin/build/workflow/delete/$workflow_name",
+         // You can not delete a default workflow
+        'href_default' => "admin/build/workflow/edit/$workflow_name",
+        'href_overridden' => "admin/build/workflow/revert/$workflow_name"),
     );
 
     // Allow modules to insert their own workflow operations.
@@ -470,12 +559,14 @@ function workflow_overview() {
     if (!module_exists('trigger') || count($workflow->states) < 2) {
       unset($links['workflow_overview_actions']);
     }
-
-    $row[] = array($workflow->label, theme('links', $links));
+    
+    $row[] = array($workflow->label, 
+                   $workflow->type,
+                   theme('links',  workflow_overview_parse_links($links, $workflow)));
   }
 
   if ($row) {
-    $output = theme('table', array(t('Workflow'), t('Operations')), $row);
+    $output = theme('table', array(t('Workflow'), t('State'), t('Operations')), $row);
     $output .= drupal_get_form('workflow_types_form');
   }
   else {
@@ -484,6 +575,41 @@ function workflow_overview() {
 
   return $output;
 }
+
+
+/**
+* Pick appropriate link title and link href, depending on the state of the workflow (Normal, Default or Overridden).
+*/
+function workflow_overview_parse_links($links, $workflow) {
+
+  $suffix = "";
+  $suffix = strtolower($workflow->type);
+ 
+  //-- Unfortunately, we can not just deduce $suffix from $workflow->type, because "type" gets translated and it does not work in non-English languages.
+  if (($workflow->export_type & EXPORT_IN_CODE) && ($workflow->export_type & EXPORT_IN_DATABASE)) {
+    $suffix = 'overridden';
+  }
+  elseif ($workflow->export_type == EXPORT_IN_CODE) {
+    $suffix = 'default';
+  }
+  elseif ($workflow->export_type == EXPORT_IN_DATABASE) {
+    $suffix = 'normal';
+  }
+   
+  if (is_array($links)) {
+    foreach ($links as &$link) {
+      if (isset($link["title_" . $suffix])) {
+        $link["title"] = $link["title_" . $suffix];
+      }
+      if (isset($link["href_" . $suffix])) {
+        $link["href"] = $link["href_" . $suffix];
+      }      
+    }
+  }
+  
+  return $links;
+}
+
 
 /**
  * Page callback for the Workflow States tab.
@@ -500,7 +626,8 @@ function workflow_states($workflow) {
  */
 function workflow_states_form(&$form_state, $workflow) {
   $form = array();
-
+  $form['#workflow'] = $workflow;  
+  
   $form['#states'] = $states = array_filter($workflow->states, 'workflow_state_is_active');
   $form['states']['#tree'] = TRUE;
 
@@ -509,7 +636,7 @@ function workflow_states_form(&$form_state, $workflow) {
   }
 
   // Now add an empty state form.
-  $form['states'][] = _workflow_state_create_form(&$form_state, $workflow->name);
+  $form['states'][] = _workflow_state_create_form($form_state, $workflow->name);
 
   $form['buttons']['submit'] = array(
     '#type' => 'submit',
@@ -537,10 +664,11 @@ function workflow_states_form(&$form_state, $workflow) {
  *   Form array.
  */
 function _workflow_state_edit_form(&$form_state, $state) {
+  
   $form['#state'] = $state;
   $form['workflow_name'] = array(
     '#type' => 'value',
-    '#value' => $state->name,
+    '#value' => $state->workflow_name,
   );
   $form['sid'] = array(
     '#type' => 'value',
@@ -619,6 +747,7 @@ function _workflow_state_create_form(&$form_state, $workflow_name) {
     '#title' => t('Machine name'),
     '#size'  => '16',
     '#maxlength' => '254',
+    '#field_prefix' =>   $workflow_name . '_',
     '#description' => t('Enter the machine name for this state. Must be unique and use only alphanumeric characters and underscores.'),
     '#element_validate' => array('workflow_state_validate_machine_name'),
   );
@@ -646,6 +775,10 @@ function theme_workflow_states_form($form) {
   foreach (element_children($form['states']) as $state_name) {
     $state_form = &$form['states'][$state_name];
     $cols = array();
+    
+    // This is needed to prevent admin theme breaking tabledrag on forms due to its
+    // special handling of description field.
+    $cols[] = array('data' => '', 'style' => 'width:30px');
 
     // Render the hidden 'sid' field and the title of the record into the same 
     // column of the row, keeping in mind that 'sid' may be empty.
@@ -679,15 +812,16 @@ function theme_workflow_states_form($form) {
   // on the form itself after we're done, so hidden security fields and other
   // elements (like buttons) will appear properly at the bottom of the form.
   $id = $form['#id'] .'-table';
-  $header = array(t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
+  $header = array('', t('State Label'), t('Weight'), t('Machine Name'), t('Operations'));
   $form['states']['#children'] .= theme('table', $header, $rows, array('id' => $id));
+  
   $form['states']['#children'] .= drupal_render($form['buttons']['submit']);
   $output = drupal_render($form);
 
   // Now that we've built our output, tell Drupal to add the tabledrag.js library.
   // We'll pass in the ID of the table, the behavior we want it to use, and the
   // class that appears on each 'weight' form element it should be controlling.
-  drupal_add_tabledrag($id, 'order', 'self', 'workflow-state-weight');
+  drupal_add_tabledrag($id, 'order', 'sibling', 'workflow-state-weight');
 
   return $output;
 }
@@ -745,7 +879,6 @@ function workflow_state_validate_label($element, &$form_state) {
  * @see workflow_states_form()
  */
 function workflow_state_validate_machine_name($element, &$form_state) {
-  $workflow_name = $form_state['values']['workflow_name'];
   $machine_name = strtolower($element['#value']);
 
   // Make sure machine name contains only alnum chars and underscores.
@@ -753,9 +886,16 @@ function workflow_state_validate_machine_name($element, &$form_state) {
     form_error($element, t("The machine name must consist of alphanumeric or underscore characters only."));
   }
 
+  $states = $form_state['values']['states'];
+  //-- If there are no other states, checking for duplicate is not needed
+  if (!is_array($states) || sizeof($states)<1) return;
+  
+  $workflow_name = $states[0]['workflow_name'];
+  
   // Ensure that this machine name is unique.
-  if (workflow_state_machine_name_exists($machine_name)) {
-    form_error($element, t('A state with the machine name %name already exists.', array('%name' => $machine_name)));
+  if (workflow_state_machine_name_exists($workflow_name . '_' . $machine_name)) {
+    form_error($element, t('A state with the machine name: %name in the workflow: %workflow already exists.', 
+      array('%name' => $machine_name, '%workflow' => $workflow_name)));
   }
 }
 
@@ -809,18 +949,45 @@ function workflow_states_form_validate($form, &$form_state) {
  * @see workflow_states_form()
  */
 function workflow_states_form_submit($form, &$form_state) {
-  foreach ($form_state['values']['states'] as $state_name => $state) {
-    // Ensure the state has all necessary fields and isn't a system state before
-    // saving.
-    if (!empty($state['name']) && !empty($state['label']) && !$state['system_state']) {
-      $state['name'] = strtolower($state['name']);
-      $state = workflow_state_save((object) $state);
-      if (empty($form_state['values']['states'][$state_name]['sid'])) {
-        watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
-        drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
+
+  $states = $form_state['values']['states'];
+  $workflow = $form['#workflow'];
+  //-- don't save states from the code, though!
+  unset($workflow->states); 
+
+  //-- Let's make sure workflow is already in the database!  
+  if ($workflow->export_type == WORKFLOW_IN_CODE) {
+    workflow_save($workflow);
+  }
+
+  if (is_array($states)) {
+    foreach ($states as $state_name => $state) {              
+      // Ensure the state has all necessary fields and isn't a system state before saving.
+      if (!empty($state['name']) && !empty($state['label']) && empty($state['system_state'])) {
+        $state['name'] = strtolower($state['name']);
+
+        //-- Prefix new state names with workflow-name to ensure they are unique-enough.
+        //-- Caution: this check is specifically "isset()" since states in code would also
+        //-- return TRUE on empty() but their "sid" is already set: to -1.
+        //-- We do not want to add prefix to states from code, only to new states!
+        if (!isset($state['sid'])) {
+          $state['name'] = $workflow->name . '_' . $state['name'];
+        }
+        elseif ($state['sid'] == -1) {
+          //unset -1 as sid for code-provided state so workflow_state_save does not go nuts
+          unset($state['sid']);
+          unset($states[$state_name]['sid']);
+        }
+        
+        $state = workflow_state_save((object) $state);
+        if (empty($states[$state_name]['sid'])) {
+          watchdog('workflow', 'Created workflow state %label', array('%label' => $state->label));
+          drupal_set_message(t('The workflow state %label was created.', array('%label' => $state->label)));
+        }
       }
     }
   }
+  workflow_clear_cache();
 }
 
 /**
@@ -924,7 +1091,7 @@ function workflow_types_form() {
   }
 
   $options = array('<'. t('None') .'>') + $workflows;
-
+  
   $type_map = workflow_node_type_map_load();
 
   $form['#theme'] = 'workflow_types_form';
@@ -984,13 +1151,16 @@ function theme_workflow_types_form($form) {
  * @see workflow_types_form()
  */
 function workflow_types_form_submit($form, &$form_state) {
+  
   $node_types = $form['#node_types'];
 
   foreach ($node_types as $type => $name) {
-    if ($workflow_name = $form_state['values'][$type]['workflow_name']) {
+    //-- now that type mapping is exportable, we need to save mappings with workflow_name = none, too
+    //-- otherwise they won't be able to override mappings from code and you will never
+    //-- be able to disable a mapping provided from code.
+      $workflow_name = $form_state['values'][$type]['workflow_name'];
       workflow_node_type_save($workflow_name, $type);
-      variable_set('workflow_' . $type, array_keys(array_filter($form_state['values'][$type]['placement'])));
-    }
+      variable_set('workflow_' . $type, array_keys(array_filter($form_state['values'][$type]['placement'])));    
   }
 
   drupal_set_message(t('The workflow mapping was saved.'));

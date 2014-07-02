@@ -26,8 +26,8 @@ define('WORKFLOW_IN_CODE', 0x02);
  */
 function workflow_load($name) {
   $workflows = workflow_load_all();
-
-  return empty($workflows[$name]) ? FALSE : $workflows[$name];
+  $workflow =  empty($workflows[$name]) ? FALSE : $workflows[$name];
+  return $workflow;
 }
 
 /**
@@ -39,56 +39,24 @@ function workflow_load($name) {
  *   An array of workflows.
  */
 function workflow_load_all($reset = FALSE) {
-  static $workflows;
 
-  if (is_null($workflows) || $reset) {
-    // See if we have a populated cache first.
-    if (!$reset && $cache = cache_get('workflows')) {
-      $workflows = $cache->data;
-      return $workflows;
-    }
-
-    $workflows = array();
-
-    // Load all workflows from the database.
-    $result = db_query("SELECT * FROM {workflows} ORDER BY label ASC");
-    while ($workflow = db_fetch_object($result)) {
-      // Sanitize the label.
-      $workflow->label = check_plain(t($workflow->label));
-      // Unserialize the options.
-      $workflow->options = unserialize($workflow->options);
-
-      // Load up the states.
-      $workflow->states = workflow_get_db_states($workflow->name);
-
-      $workflow->export_type = WORKFLOW_IN_DATABASE; // 0001
-      $workflows[$workflow->name] = $workflow;
-    }
-
-    // Load up any workflows from code and save them to the database.
-    $default_workflows = module_invoke_all('workflow_default_workflows');
-    drupal_alter('workflow_default_workflows', $default_workflows);
-
-    foreach ($default_workflows as $workflow) {
-      if (empty($workflows[$workflow->name])) {
-        $workflow->export_type = WORKFLOW_IN_CODE; // 0010
-        $workflows[$workflow->name] = $workflow;
-      }
-      else {
-        // Sets export_type to 0011 (In database and code, aka OVERRIDDEN).
-        $workflows[$workflow->name]->export_type |= WORKFLOW_IN_CODE;
-      }
-    }
-
-    drupal_alter('workflows', $workflows);
-
-    dsm($workflows);
-
-    cache_set('workflows', $workflows);
+  //-- CTools only provides static cache. We need to 
+  //-- implement additional cache because workflow_load_all
+  //-- can be a heavy operation.
+  if (!$reset && $cache = cache_get('workflows')) {
+    $workflows = $cache->data;
+    return $workflows;
   }
-
+  
+  ctools_include('export');
+  $workflows = ctools_export_crud_load_all('workflows', $reset);
+  drupal_alter('workflows', $workflows);
+  
+  cache_set('workflows', $workflows);
   return $workflows;
+
 }
+
 
 /**
  * Get all workflow labels.
@@ -110,11 +78,43 @@ function workflow_load_all_labels() {
   return $labels;
 }
 
+
 /**
  * Resets the workflow cache and reloads all workflow objects.
  */
 function workflow_invalidate_cache() {
   workflow_load_all(TRUE);
+}
+
+/**
+ * Removes workflow cache. For functions like workflow_state_save, calling this function
+ * is much faster than calling workflow_invalidate_cache.
+ */
+function workflow_clear_cache() {
+  cache_clear_all('workflows', 'cache', FALSE);
+}
+
+/**
+ * Write the transition roles for a workflow object. This function is in particular needed
+ * when saving in_code workflow to database (during "override").
+ *
+ * @param $workflow
+ *   Workflow object.
+ */
+function workflow_save_transitions($workflow) {
+  // Clean up existing transitions in the database
+  workflow::remove_transitions($workflow->name);
+
+  if (is_array($workflow->transitions)) {
+    foreach ($workflow->transitions as $trn) {
+      if (is_array($trn->roles)) {
+        $trn->roles = implode(',', $trn->roles);
+      }
+      $record = drupal_write_record('workflow_transitions', $trn);
+    }
+  }
+
+  workflow_clear_cache();
 }
 
 /**
@@ -129,17 +129,22 @@ function workflow_transitions_write($from_state, $transitions) {
   // Clean up existing
   db_query("DELETE FROM {workflow_transitions} WHERE state_name = '%s'", $from_state);
 
-  foreach ($transitions as $to_state => $roles) {
-    $transition = array();
-    $transition['state_name'] = $from_state;
-    $transition['target_state_name'] = $to_state;
-    $transition['roles'] = implode(',', $roles);
-
-    $record = drupal_write_record('workflow_transitions', $transition);
+  if (is_array($transitions)) {
+    foreach ($transitions as $to_state => $roles) {
+      //-- Do not save empty records.
+      if (!is_array($roles) || sizeof($roles) < 1 ) continue;
+      $transition = array();
+      $transition['state_name'] = $from_state;
+      $transition['target_state_name'] = $to_state;
+      $transition['roles'] = implode(',', $roles);
+  
+      $record = drupal_write_record('workflow_transitions', $transition);
+    }
   }
 
-  // Invalidate the workflow cache.
-  workflow_invalidate_cache();
+  // This function is called repeatedly during grid save, hence calling
+  // workflow_invalidate_cache and reloading workflow every time would make it too slow.
+  workflow_clear_cache();
 
   return $record;
 }
@@ -182,12 +187,25 @@ function workflow_get_label($name) {
  *   The saved workflow object.
  */
 function workflow_save($workflow) {
-  $default = array('options' => array('comment_log_node' => 1, 'comment_log_tab' => 1));
-  $workflow += $default;
+  
+  if (!is_object($workflow)) {
+    $workflow = (object) $workflow;
+  }
 
-  $workflow = (object) $workflow;
+  $default_options = array('comment_log_node' => 1, 'comment_log_tab' => 1);
+  if (!is_array($workflow->options)) {
+    $workflow->options = array();
+  }
+  $workflow->options += $default_options;
+  
+  if (!empty($workflow->wid)) {
+    $ret = drupal_write_record('workflows', $workflow, "wid");
+  }
+  else {
+    $ret = drupal_write_record('workflows', $workflow);    
+  }
 
-  if (drupal_write_record('workflows', $workflow)) {
+  if ($ret) {
     if (empty($workflow->states)) {
       $state = new stdClass();
       $state->name = _workflow_creation_state($workflow->name);
@@ -208,7 +226,10 @@ function workflow_save($workflow) {
       }
     }
 
+    workflow_save_transitions($workflow);
+
     // Workflow creation affects tabs (local tasks), so force menu rebuild.
+    cache_clear_all('*', 'cache_menu', TRUE); 
     menu_rebuild();
     workflow_invalidate_cache();
   }
@@ -228,8 +249,8 @@ function workflow_update($workflow) {
   $workflow = (object) $workflow;
   $workflow->tab_roles = is_array($workflow->tab_roles) ? implode(',', $workflow->tab_roles) : $workflow->tab_roles;
   $workflow = drupal_write_record('workflows', $workflow, 'wid');
-
   // Workflow name change affects tabs (local tasks), so force menu rebuild.
+  cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
   workflow_invalidate_cache();
 
@@ -249,7 +270,6 @@ function workflow_deletewf($name) {
   while ($state = db_fetch_object($result)) {
     // Delete the state and any associated transitions and actions.
     workflow_state_delete($state->name);
-    db_query("DELETE FROM {workflow_node} WHERE state_name = '%s'", $state->name);
   }
   db_query("DELETE FROM {workflow_type_map} WHERE workflow_name = '%s'", $name);
   db_query("DELETE FROM {workflows} WHERE name = '%s'", $name);
@@ -258,7 +278,45 @@ function workflow_deletewf($name) {
   // Workflow deletion affects tabs (local tasks), so force menu rebuild.
   cache_clear_all('*', 'cache_menu', TRUE);
   menu_rebuild();
+  workflow_invalidate_cache();
 }
+
+
+/**
+ * Load workflow state labels for a workflow. If $workflow_name is not passed,
+ * all states for all workflows are given. States that have been deleted are not
+ * included.
+ *
+ * @param $workflow_name
+ *   The machine name of the workflow.
+ * @return
+ *   An array of workflow states.
+ */
+function workflow_get_state_labels($workflow_name = NULL) {
+  $states = workflow_get_states($workflow_name);
+
+  foreach ($states as $name => $state) {
+    $states[$name] = $state->label;
+  }
+
+  return $states;
+}
+
+/**
+ * Given the machine name of a workflow state, return a keyed array representing
+ * the state.
+ *
+ * @param $name
+ *   The machine name of the workflow state.
+ * @return
+ *   The workflow state object.
+ */
+function workflow_get_state($name) {
+  $states = workflow_get_states();
+
+  return $states[$name];
+}
+
 
 /**
  * Load all database and code workflow states. If $workflow_name is not passed,
@@ -285,8 +343,8 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
       // We iterate through all the states so that we can prepend the Workflow
       // label to the state label.
       foreach ($workflows as $workflow) {
-        $states = $workflow->states;
-        foreach ($states as $name => $state) {
+        $var_states = $workflow->states;
+        foreach ($var_states as $name => $state) {
           $state->label = $workflow->label .': '. $state->label;
           $all_states[$name] = $state;
           // Keep the active only states in a separate array.
@@ -296,12 +354,13 @@ function workflow_get_states($workflow_name = NULL, $all = FALSE) {
         }
       }
     }
-
+    
     return $all ? $all_states : $states;
   }
 
   $states = $workflows[$workflow_name]->states;
-  return $all ? $states : array_filter($states, 'workflow_state_is_active');
+  $filtered_states = is_array($states) ? array_filter($states, 'workflow_state_is_active') : array();
+  return $all ? $states : $filtered_states;
 }
 
 /**
@@ -343,41 +402,6 @@ function workflow_get_db_states($workflow_name) {
 }
 
 /**
- * Load workflow state labels for a workflow. If $workflow_name is not passed,
- * all states for all workflows are given. States that have been deleted are not
- * included.
- *
- * @param $workflow_name
- *   The machine name of the workflow.
- * @return
- *   An array of workflow states.
- */
-function workflow_get_state_labels($workflow_name = NULL) {
-  $states = workflow_get_states($workflow_name);
-
-  foreach ($states as $name => $state) {
-    $states[$name] = $state->label;
-  }
-
-  return $states;
-}
-
-/**
- * Given the machine name of a workflow state, return a keyed array representing
- * the state.
- *
- * @param $name
- *   The machine name of the workflow state.
- * @return
- *   The workflow state object.
- */
-function workflow_get_state($name) {
-  $states = workflow_get_states();
-
-  return $states[$name];
-}
-
-/**
  * Given the machine name of a state, return its label.
  *
  * @param $name
@@ -401,8 +425,9 @@ function workflow_get_state_label($name) {
  *   The ID of the new or updated workflow state.
  */
 function workflow_state_save($state) {
+
   if (!isset($state->sid)) {
-    drupal_write_record('workflow_states', $state);
+    $ret = drupal_write_record('workflow_states', $state);
   }
   else {
     drupal_write_record('workflow_states', $state, 'sid');
@@ -412,7 +437,7 @@ function workflow_state_save($state) {
     workflow_transitions_write($state->name, $state->transitions);
   }
 
-  workflow_invalidate_cache();
+  workflow_clear_cache();
 
   return $state;
 }
@@ -511,7 +536,7 @@ function workflow_transition($object, $state_name, $workflow) {
   if (array_key_exists($state_name, workflow_field_choices($object, $workflow))) {
     if (!$object->workflow_scheduled) {
       // It's an immediate change. Do the transition.
-      $comment = isset($object->workflow_comment) ? $object->workflow_comment : NULL;
+      $comment = isset($object->workflow_comment) ? $object->workflow_comment : NULL;      
       workflow_execute_transition($object, $state_name, $workflow, $comment);
     }
     else {
@@ -562,6 +587,31 @@ function workflow_transition($object, $state_name, $workflow) {
 }
 
 /**
+ * Get the states current user can move to.
+ *
+ * @param $object
+ *   The entity to determine choices for.
+ * @param $workflow
+ *   The workflow to determine the options on.
+ * @return
+ *   Array of transitions.
+ */
+function workflow_field_choices($object, $workflow) {
+  global $user;
+  $account = $user;
+
+  $current_state = workflow_node_current_state($object);
+
+  // If user is node author or this is a new page, give the authorship role.
+  if (($user->uid == $object->uid && $object->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
+    $account->roles['author'] = 'author';
+  }
+  $transitions = workflow_allowable_transitions($current_state, $workflow, $account);
+
+  return $transitions;
+}
+
+/**
  * Get allowable transitions based on roles. Typical use:
  *
  * @param $current_state
@@ -582,16 +632,18 @@ function workflow_allowable_transitions($current_state, $workflow, $account = NU
   }
 
   $transitions = array();
-
+  
   $available_transitions = $workflow->states[$current_state]->transitions;
 
-  foreach ($workflow->states as $state_name => $state) {
-    if (workflow_state_is_active($state)) {
-      $allowed_roles = $available_transitions[$state_name];
-      if ($account->uid == 1  // Superuser.
-        || $state_name == $current_state // Include current state for same-state transitions.
-        || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
-        $transitions[$state_name] = $state->label;
+  if (is_array($workflow->states)) {
+    foreach ($workflow->states as $state_name => $state) {
+      if (workflow_state_is_active($state)) {
+        $allowed_roles = $available_transitions[$state_name];
+        if ($account->uid == 1  // Superuser.
+          || $state_name == $current_state // Include current state for same-state transitions.
+          || workflow_transition_allowed($workflow, $current_state, $state_name, $account)) {
+          $transitions[$state_name] = $state->label;
+        }
       }
     }
   }
@@ -627,6 +679,7 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
       $node->workflow_stamp = time();
       db_query("UPDATE {workflow_node} SET stamp = %d WHERE nid = %d", $node->workflow_stamp, $node->nid);
       $result = module_invoke_all('workflow', 'transition pre', $old_state, $state_name, $node);
+      $node->_workflow = $old_state;
       _workflow_write_history($node, $state_name, $comment);
       unset($node->workflow_comment);
 
@@ -639,11 +692,6 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
     return;
   }
 
-  $tid = workflow_get_transition_id($old_state, $state_name);
-  if (!$tid && !$force) {
-      watchdog('workflow', 'Attempt to go to nonexistent transition (from %old to %new)', array('%old' => $old_state, '%new' => $state_name, WATCHDOG_ERROR));
-      return;
-  }
   // Make sure this transition is valid and allowed for the current user.
   // Check allowability of state change if user is not superuser (might be cron).
   if (($user->uid != 1) && !$force) {
@@ -656,6 +704,7 @@ function workflow_execute_transition($node, $state_name, $workflow, $comment = N
       return;
     }
   }
+  
   // Invoke a callback indicating a transition is about to occur. Modules
   // may veto the transition by returning FALSE.
   $result = module_invoke_all('workflow', 'transition pre', $old_state, $state_name, $node);
@@ -713,26 +762,14 @@ function workflow_transition_allowed($workflow, $from_state, $to_state, $account
     $account = $user;
   }
 
-  $roles = $workflow->states[$from_state]->transitions[$to_state];
+  $roles = isset($workflow->states[$from_state]->transitions[$to_state]) ?
+            $workflow->states[$from_state]->transitions[$to_state]->roles : FALSE;
+            
+  if (!is_array($roles) || !is_array($account->roles)) return FALSE;
+      
   $allowed_roles = array_keys($account->roles);
 
-  dsm($allowed_roles);
-
   return (bool) array_intersect($roles, $allowed_roles);
-}
-
-/**
- * Get the tid of a transition, if it exists.
- *
- * @param $from
- *   The machine name of the originating state.
- * @param $to
- *   The machine name of the target state.
- * @return int
- *   Tid or FALSE if no such transition exists.
- */
-function workflow_get_transition_id($from, $to) {
-  return db_result(db_query("SELECT tid FROM {workflow_transitions} WHERE state_name = '%s' AND target_state_name = '%s'", $from, $to));
 }
 
 /**
@@ -766,31 +803,6 @@ function workflow_actions_remove($tid, $aid) {
 }
 
 /**
- * Get the states current user can move to.
- *
- * @param $object
- *   The entity to determine choices for.
- * @param $workflow
- *   The workflow to determine the options on.
- * @return
- *   Array of transitions.
- */
-function workflow_field_choices($object, $workflow) {
-  global $user;
-  $account = $user;
-
-  $current_state = workflow_node_current_state($object);
-
-  // If user is node author or this is a new page, give the authorship role.
-  if (($user->uid == $object->uid && $object->uid > 0) || (arg(0) == 'node' && arg(1) == 'add')) {
-    $account->roles['author'] = 'author';
-  }
-  $transitions = workflow_allowable_transitions($current_state, $workflow, $account);
-
-  return $transitions;
-}
-
-/**
  * Write the node history record to workflow_node_history.
  */
 function _workflow_write_history($node, $state_name, $comment) {
@@ -808,7 +820,7 @@ function workflow_get_roles() {
   static $roles = NULL;
   if (!$roles) {
     $result = db_query('SELECT * FROM {role} ORDER BY name');
-    $roles = array('author' => 'author');
+    $roles = array('author' => t('Content Creator (workflow)'));    
     while ($data = db_fetch_object($result)) {
       $roles[$data->rid] = check_plain($data->name);
     }

@@ -112,6 +112,14 @@ function workflow_menu() {
     'page arguments' => array('workflow_delete_form'),
     'file' => 'workflow.admin.inc',
   );
+  $items['admin/build/workflow/revert'] = array(
+    'title' => 'Revert workflow',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer workflow'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('workflow_revert_form'),
+    'file' => 'workflow.admin.inc',
+  );  
   $items['node/%node/workflow'] = array(
     'title' => 'Workflow',
     'type' => MENU_LOCAL_TASK,
@@ -234,7 +242,11 @@ function workflow_views_api() {
 function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
   switch ($op) {
     case 'load':
-      $node->_workflow = workflow_node_current_state($node);
+      $curr_state = workflow_node_current_state($node);
+      //-- is current node type managed by a workflow?
+      if (!empty($curr_state)) {
+        $node->_workflow = $curr_state;
+      }
 
       // Add scheduling information.
       $res = db_query('SELECT * FROM {workflow_scheduled_transition} WHERE nid = %d', $node->nid);
@@ -249,13 +261,13 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // If the state is not specified, use first valid state.
       // For example, a new node must move from (creation) to some
       // initial state.
+      $workflow = workflow_get_workflow_for_type($node->type);
       if (empty($node->workflow)) {
-        $workflow = workflow_get_workflow_for_type($node->type);
         $choices = workflow_field_choices($node, $workflow);
         $keys = array_keys($choices);
-        $node->workflow = array_shift($keys);
+        // Skip the creation state, choose the second index
+        $node->workflow = $keys[1];
       }
-
       workflow_transition($node, $node->workflow, $workflow);
       break;
 
@@ -264,9 +276,11 @@ function workflow_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
       // workflow_get_workflow_for_type(). The reason we do this is because the
       // workflow may have changed on this particular node, due to lack of
       // restrictions on the workflow_types_form().
+      
+      //-- $node->workflow is misnamed and is actually the name of the workflow state 
+      //-- that user is trying to switch to.
       $state = workflow_get_state($node->workflow);
       $workflow = workflow_load($state->workflow_name);
-
       workflow_transition($node, $state->name, $workflow);
       break;
 
@@ -370,8 +384,10 @@ function workflow_node_form(&$form, $form_state, $title, $name, $default_value, 
 
       $form['workflow']['workflow_scheduled_hour'] = array(
         '#type' => 'textfield',
+        '#title' => t('Time'),
         '#description' => t($description, $t_args),
-        '#default_value' => $scheduled ? $sched_hour : NULL,
+        '#size' => 10,
+        '#default_value' => $scheduled ? $sched_hour : '00:00',
       );
     }
     if (isset($form['#tab'])) {
@@ -401,10 +417,6 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
   if ($form_id == 'comment_form' || (isset($form['type']) && isset($form['#node']) && $form['type']['#value'] .'_node_form' == $form_id)) {
     if (isset($form['#node'])) {
       $node = $form['#node'];
-      // Abort if no workflow is assigned to this node type.
-      if (!($workflow = workflow_get_workflow_for_type($node->type))) {
-        return;
-      }
     }
     else {
       $type = db_result(db_query("SELECT type FROM {node} WHERE nid = %d", $form['nid']['#value']));
@@ -414,8 +426,13 @@ function workflow_form_alter(&$form, $form_state, $form_id) {
       }
       $node = node_load($form['nid']['#value']);
     }
+  
+    // Abort if no workflow is assigned to this node type.
+    if (!($workflow = workflow_get_workflow_for_type($node->type))) {
+      return;
+    }
 
-    $choices = workflow_field_choices($node);
+    $choices = workflow_field_choices($node, $workflow);
     $name = $workflow->name;
 
     // If this is a preview, the current state should come from the form values,
@@ -612,11 +629,18 @@ function workflow_token_values($type, $object = NULL) {
         $mail = $node->uid ? $node->user_mail : '';
         $comment = $node->workflow_comment;
       }
-      else if (!isset($node->workflow) && empty($row->state_name)) {
+      elseif (!isset($node->workflow) && empty($row->state_name)) {
         // If the state is not specified and the node has no workflow history,
         // the node is being inserted and will soon be transitioned to the first valid state.
         // We find this state using the same logic as workflow_nodeapi().
-        $choices = workflow_field_choices($node);
+
+        // Abort if no workflow is assigned to this node type.
+        if (!($workflow = workflow_get_workflow_for_type($node->type))) {
+          return array();
+        }
+    
+        $choices = workflow_field_choices($node, $workflow);
+        
         $keys = array_keys($choices);
         $state_name = array_shift($keys);
         $old_state_name = _workflow_creation_state($machine_name);
@@ -759,9 +783,9 @@ function workflow_workflow($op, $old_state, $new_state, $node) {
  */
 function workflow_include_files() {
   static $finished;
-
+  
   if (!$finished) {
-    $files = array('workflow', 'workflow.actions', 'workflow.node');
+    $files = array('workflow', 'workflow.actions', 'workflow.node', 'workflow.classes');
     foreach ($files as $file) {
       module_load_include('inc', 'workflow', 'includes/'. $file);
     }
