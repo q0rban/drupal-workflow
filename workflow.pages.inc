@@ -12,6 +12,7 @@
 function workflow_tab_page($node = NULL) {
   drupal_set_title(check_plain($node->title));
   $workflow = workflow_get_workflow_for_type($node->type);
+
   $states_per_page = variable_get('workflow_states_per_page', 20);
 
   $states = $workflow->states;
@@ -120,6 +121,7 @@ function theme_workflow_deleted_state($label) {
  *   Form definition array.
  */
 function workflow_tab_form($form_state, $node, $workflow, $states, $current_state) {
+
   $form['#tab'] = TRUE;
   $choices = workflow_field_choices($node, $workflow);
 
@@ -133,7 +135,11 @@ function workflow_tab_form($form_state, $node, $workflow, $states, $current_stat
       $default_value = $node->_workflow_scheduled_state_name;
       $timestamp = $node->_workflow_scheduled_timestamp;
       $comment = $node->_workflow_scheduled_comment;
+    } 
+    else {
+      $default_value = $node->_workflow;
     }
+    
 
     if (empty($default_value)) {
       $choices_filtered = $choices;

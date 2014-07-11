@@ -22,7 +22,7 @@ function workflow_check_transition_form($settings, &$form) {
     '#type' => 'select',
     '#title' => t('From State'),
     '#options' => $options,
-    '#multiple'=> TRUE,
+    '#multiple' => TRUE,
     '#default_value' => isset($settings['from_state']) ? $settings['from_state'] : array(),
     '#required' => TRUE,
   );
@@ -30,7 +30,7 @@ function workflow_check_transition_form($settings, &$form) {
     '#type' => 'select',
     '#title' => t('To State'),
     '#options' => $options,
-    '#multiple'=> TRUE,
+    '#multiple' => TRUE,
     '#default_value' => isset($settings['to_state']) ? $settings['to_state'] : array(),
     '#required' => TRUE,
   );
@@ -48,7 +48,8 @@ function workflow_check_transition_label($settings, $argument_labels) {
     if ($state != 'ANY') {
         $fromtemp = workflow_get_state($state);
         $from[] = $fromtemp->label; 
-    } else {
+    } 
+    else {
         $from[] = t('Any state');
     }
   }
@@ -56,9 +57,10 @@ function workflow_check_transition_label($settings, $argument_labels) {
     if ($state != 'ANY') {
         $totemp = workflow_get_state($state);
         $to[] = $totemp->label; 
-    } else {
+    } 
+    else {
         $to[] = t('Any state');
     }
   }
-  return t('Check workflow transition from @from to @to', array('@from' => implode(', ',$from), '@to' => implode(', ',$to)));
+  return t('Check workflow transition from @from to @to', array('@from' => implode(', ', $from), '@to' => implode(', ', $to)));
 }
